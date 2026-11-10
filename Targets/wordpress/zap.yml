@@ -1,0 +1,64 @@
+# Automation Framework plan for WordPress — the alternative to the REST driving
+# mode, used when the scan runs with ZAP_MODE=af / --zap-mode af.
+#
+# WHY THIS FILE EXISTS. The pipeline's default is `rest`: scan.py sequences the
+# scan over ZAP's REST API, every option it sets is visible in one place, and
+# that is the mode every recorded result was produced with. But a plan is how ZAP
+# is normally driven in CI, it can be written and edited in ZAP's own GUI, and it
+# can be handed to someone who knows nothing about this codebase. Both modes are
+# kept so the thesis can show the same target scanned each way.
+#
+# WHAT THE PIPELINE STILL DOES AROUND IT. A plan describes what to DO, not what
+# has already been set up. Before this file runs, scan.py has already: restarted
+# or reset the daemon, logged in and installed the session cookie as a Replacer
+# rule, run Noir and seeded its endpoints into the site tree, and set the
+# injectable-target mask. So this plan inherits an authenticated, pre-seeded
+# session and only has to crawl and scan.
+#
+# NOT VERSIONED, BUT ATTRIBUTABLE. Unlike prompts/, this file carries no version
+# in its name — an AF plan is configuration for a tool, not a variable under
+# study. The run records its SHA-256 instead, so a stored result can always be
+# matched to the exact bytes that produced it.
+#
+# A CAVEAT WORTH KNOWING. ZAP does not reject an unrecognised job type: a plan
+# with a typo runs to completion reporting no error at all. The pipeline echoes
+# ZAP's own job list into the log and the metrics for exactly this reason — it is
+# the only evidence of what actually ran. Check it after editing this file.
+
+env:
+  contexts:
+    - name: wordpress
+      urls:
+        - "http://target-wordpress"
+      includePaths:
+        - "http://target-wordpress.*"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  # The cheap HTML pass first, so the browser crawl starts from a populated tree
+  # rather than the site root — the same ordering the REST path uses.
+  - type: spider
+    parameters:
+      context: wordpress
+      maxDuration: 5
+
+  # ZAP's recommended crawler for modern apps. WordPress's admin surface is
+  # JS-driven, which the traditional spider cannot see at all.
+  - type: spiderClient
+    parameters:
+      context: wordpress
+      maxDuration: 5
+
+  # Let passive rules finish before the active scan floods the queue.
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  - type: activeScan
+    parameters:
+      context: wordpress
+      maxScanDurationInMins: 45
+      maxRuleDurationInMins: 5

@@ -1,0 +1,109 @@
+# Optimisation pass 5 — can the triage arm be asked for something the table
+# structurally cannot produce?
+#
+#   uv run dast harness config/harness/05-triage-prompt-v4.yml --dry-run
+#   uv run dast harness config/harness/05-triage-prompt-v4.yml
+#
+# ~2 h, ~$0.25. Same stored corpus for every row; nothing re-scans.
+
+# ---------------------------------------------------------------------------
+# THE NUMBER THIS SHEET EXISTS TO MOVE
+#
+#   `agreement.llm-only` — findings the model escalates that the free,
+#   deterministic rescan table does not — has been 0-2 in EVERY run this project
+#   has ever recorded. Twenty variants in sheets 1-2 (two models, three context
+#   levels, before and after the verdict-contract fix) did not move it. It is the
+#   single most damning number against the LLM triage arm, because everything
+#   else that arm produces, the table produced too, for free.
+#
+# THE MECHANISM, FOUND BY READING THE PROMPT AGAINST THE TABLE
+#
+#   triage.v3.md rules 4 and 5 are a restatement of the table's own logic:
+#
+#     v3 rule 4: prefer NO rescan for headers, cookie attributes, disclosed text
+#     v3 rule 5: prefer rescan for injection, traversal, redirect
+#
+#   That is precisely what a table keyed on ZAP plugin id encodes — 10021/10038/
+#   10096 route to no tool, 6/40018/40012/30002/20019/10031 route to one. The
+#   prompt has been asking the model to REPRODUCE the control arm. A flat
+#   `llm-only` is then not a finding about model capability at all; it is the
+#   prompt getting what it asked for.
+#
+# WHAT v4 CHANGES
+#
+#   It tells the model that a deterministic component already decides the rule
+#   class, names that component's ONE structural limitation — it sees only the
+#   rule id and ZAP's confidence, never the route, handler, guards, sinks or
+#   parameter — and asks for the instance-level judgement that limitation leaves
+#   open. Rules 4 and 5 are rewritten from "prefer X" into "the rule class
+#   already says X; your contribution is which instances differ, and why".
+#
+#   A new rule 5a asks explicitly for the reverse direction — evidence arguing
+#   AGAINST escalating something its rule class would escalate — because
+#   otherwise the obvious way to raise `llm-only` is to escalate more of a noisy
+#   rule class, which is the failure mode the table already has and would be
+#   gaming this sheet rather than passing it.
+#
+#   The model is NOT told what the table decided for any finding. The two arms
+#   must stay independent or every agreement count in the project becomes
+#   circular.
+#
+# THE QUESTION THIS SHEET ASKS
+#
+#   Does v4 move `llm-only` off its flat line, and if so, are the extra flags
+#   grounded?
+#
+#   Read in this order, and do not stop at the first:
+#     * `agreement.llm-only` — v3 baseline is 1-2. Anything inside 0-3 is noise.
+#     * `agreement.deterministic-only` — if this collapses while `llm-only`
+#       rises, v4 has not added judgement, it has moved the model's threshold.
+#     * `llm_rescans` overall — a large rise is the gaming signal. v4 asking for
+#       instance judgement should change WHICH findings are flagged far more than
+#       HOW MANY.
+#     * the reasoning text of any llm-only finding — v4 demands it name the guard,
+#       sink, source or template that changed the verdict. A flag whose reasoning
+#       names none is not an instance judgement, whatever the counter says.
+#     * `llm_findings_unanswered` must stay ~1. v4 is a longer prompt; if it
+#       costs answers it has traded the thing sheet 2 fixed.
+#
+#   NEGATIVE RESULT, AND IT IS THE LIKELY ONE: if `llm-only` stays 0-2 with a
+#   prompt written specifically to elicit it, that is a much stronger result than
+#   the flat line already recorded. It would mean the arm does not decline to
+#   contribute because it was asked the wrong question, but because on this
+#   target's evidence there is little instance-level signal to contribute. Close
+#   the question and say so.
+# ---------------------------------------------------------------------------
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  max_cost_usd: 0.60
+  env:
+    SHARED_AUTH_MODE: none
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    # Held at one deliberately. Sheet 4 made 5 the default, but synthesis reads
+    # pass 1's verdicts, so leaving it at 5 would let the triage prompt move
+    # through a second, noisier channel. The variable here is the prompt.
+    TRIAGE_SYNTHESIS_REPEATS: "1"
+
+rows:
+  # ---- 1. v3: the prompt every recorded run used --------------------------
+  # Re-run rather than compared against stored numbers: sheets 1-2 ran before the
+  # verdict contract and the cost-ceiling fix, so their `llm-only` came from a
+  # different pipeline. The baseline has to be measured on today's code.
+  - name: prompt-v3
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      TRIAGE_PROMPT_VERSION: "3"
+
+  # ---- 2. v4: asked for the instance judgement the table cannot make ------
+  - name: prompt-v4
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      TRIAGE_PROMPT_VERSION: "4"

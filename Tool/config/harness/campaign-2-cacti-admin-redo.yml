@@ -1,0 +1,59 @@
+# CAMPAIGN · BLOCK 2 · cacti-admin-ceiling RE-RUN (recovery, 2026-10-13).
+#
+# The campaign-2 cacti-admin-ceiling cell failed at 2026-10-13 07:36 CEST with
+# "authentication failed: login timed out after 30s": cacti's web/PHP layer had
+# deadlocked after three back-to-back cacti scans (container up, CPU idle, HTTP
+# 000). The app container was restarted — cacti-db (the data) was NOT touched, so
+# this is recovery, not a data restore — and cacti recovered (HTTP 200 ~0.1s).
+#
+# This sheet re-runs ONLY that one cell, with campaign-2's `defaults:` copied
+# VERBATIM so the config digest is identical to the intended cell. It mints its
+# own sheet directory; the resulting run carries harness_row=cacti-admin-ceiling,
+# auth=admin, oracle_guided=true, so the analyzer/`dast cve` join it by metadata
+# (RUN-PLAN §8), not by directory. Completes the 12/12 ceiling set.
+#
+#   uv run dast harness config/harness/campaign-2-cacti-admin-redo.yml
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 240
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7 — same commit as block 1
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed, not pinned: baidu failed ~80% of deepseek-v3.2 calls 2026-10-12; served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"          # overridden ON for the Cacti ceiling row below
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "on"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  - name: cacti-admin-ceiling
+    target: cacti
+    stages: [scan, triage, verify]
+    env:
+      SHARED_AUTH_MODE: admin
+      VERIFY_OOB: "on"
+      VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+      VERIFY_INTERACTSH_DNS: "172.19.0.252"

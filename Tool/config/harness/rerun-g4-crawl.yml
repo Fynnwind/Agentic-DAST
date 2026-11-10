@@ -1,0 +1,26 @@
+# RESCAN · G4 — crawler only (extraction OFF), the Noir-seeding reference.
+# Frozen rescan of 2026-11-03 (NEXT_SESSION §6, thesis docs/RERUN-PLAN.md §6).
+#
+#   uv run dast harness config/harness/rerun-g4-crawl.yml   # the USER runs this
+#
+# WHAT THIS IS. Each target scanned with SCAN_NOIR_ENABLED off (spider-only
+# Phase-1, no static endpoint seeding), scan ONLY, at user auth, repeat: 2 —
+# 4 x 2 = 8 scans. The reference that measures what Noir's seeding adds over a
+# plain crawl. Reset per scan (SCAN_RESET_TARGET on), same frozen environment.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 2.0           # scan-only: no model spend; a safety bound only
+  timeout_minutes: 240
+  env:
+    # freeze commit: rerun-2026-11-03f
+    SCAN_RESET_TARGET: "on"
+    SCAN_NOIR_ENABLED: "off"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  - {name: grafana-user-crawl,   target: grafana,   stages: [scan], repeat: 2, env: {SHARED_AUTH_MODE: user}}
+  - {name: wordpress-user-crawl, target: wordpress, stages: [scan], repeat: 2, env: {SHARED_AUTH_MODE: user}}
+  - {name: cacti-user-crawl,     target: cacti,     stages: [scan], repeat: 2, env: {SHARED_AUTH_MODE: user}}
+  - {name: gitea-user-crawl,     target: gitea,     stages: [scan], repeat: 2, env: {SHARED_AUTH_MODE: user}}

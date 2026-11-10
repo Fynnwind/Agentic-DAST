@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thesis.local/schemas/run-metrics.schema.json",
+  "title": "Run metrics artifact",
+  "description": "One record per command execution, written as data/<run>/<kind>-metrics[-<suffix>].json by src/dast_orchestrator/foundation/metrics.py; the cross-run cost table is derived from these on read (dast costs), not stored. Answers 'what does this pipeline cost to run in CI' with measured numbers: wall time per stage, model spend, container resource use, and the pinned versions that produced them. A value that could not be measured is null \u2014 never a guess, so a missing measurement and a measured zero stay distinguishable.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run",
+    "kind",
+    "started_at",
+    "total_seconds",
+    "host",
+    "tools",
+    "stages",
+    "results"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Bumped whenever a consumer-visible field changes."
+    },
+    "run": {
+      "type": "string",
+      "description": "The run this record belongs to, and the name of the directory holding every artifact of it: `<timestamp>-<target>-<config>` (see run_paths.make_run_id). The join key back to scan-zap-alerts.json / correlation.json / verification.json / the SAST+SCA baselines \u2014 metrics are never orphaned from the results they describe. The target is part of the identity because runs against different systems are not comparable, and the configuration digest because two runs of one target under different settings are not either. Both trailing fields are optional: ids recorded before each existed carry only what they had.",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z(-[A-Za-z0-9_.]+)?(-[0-9a-f]{6})?$"
+    },
+    "kind": {
+      "enum": [
+        "scan",
+        "triage",
+        "verify",
+        "report",
+        "analysis"
+      ],
+      "description": "Which command produced this record. They run independently \u2014 triage can be re-run many times against one scan, `report` builds the SARIF + summary from a finished run, and `analysis` (the standalone SAST/SCA static-analysis findings) belongs to no scan at all \u2014 so each is recorded separately rather than merged."
+    },
+    "started_at": {
+      "type": "string",
+      "description": "UTC ISO-8601 wall-clock start."
+    },
+    "total_seconds": {
+      "type": "number",
+      "description": "Measured on a monotonic clock."
+    },
+    "host": {
+      "type": "object",
+      "description": "The machine behind the timings. A runtime without it is not reproducible, and the CI-feasibility claim rests on this being modest hardware.",
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "machine": {
+          "type": "string"
+        },
+        "python": {
+          "type": "string"
+        },
+        "cpu_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "memory_gb": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "description": "Provenance per component: image tag AND resolved digest for containers (a tag is a promise, a digest is what ran), version for daemons, model id and prompt versions for the LLM arm. Never credentials. For ZAP this also carries `addons`, every installed add-on and its version \u2014 rules live in add-ons, so the daemon version alone does not identify the rule set a run used, and two runs of one pinned image differ if an add-on updated under them.",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "stages": {
+      "type": "object",
+      "description": "Wall time plus stage-specific counters, keyed by stage name (noir, seeding, spider, passive_drain, active_scan, join, llm_triage, llm_synthesis). Counters sit next to the duration so throughput needs no join.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "seconds"
+        ],
+        "properties": {
+          "seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "null only if the stage never completed."
+          },
+          "resources": {
+            "type": "object",
+            "description": "Peak and mean CPU percent and memory (MB) per container, sampled in the background throughout the stage (see metrics.ResourceSampler). Peak \u2014 not a spot reading \u2014 is what a CI capacity question asks about."
+          },
+          "calls_log": {
+            "type": "array",
+            "description": "The per-LLM-call log for stages that call a model (llm_triage, llm_synthesis, the verify loop). One entry per call \u2014 the source of the cost / latency / cache-hit family the analyzer derives (\u00a7T3). A 0 from a provider that reports nothing is recorded as such, never inferred.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {"type": "string", "description": "UTC timestamp of the call."},
+                "pass": {"type": ["string", "integer", "null"], "description": "Which pass/round (pass 1 screening, pass 2 synthesis, a verify round)."},
+                "label": {"type": ["string", "null"]},
+                "latency_ms": {"type": ["number", "null"], "description": "Round-trip latency; the p50/p95-per-provider source."},
+                "model_requested": {"type": ["string", "null"], "description": "The model id asked for."},
+                "model_served": {"type": ["string", "null"], "description": "The model id actually served (may differ under routing)."},
+                "vendor": {"type": ["string", "null"], "description": "Who built the model (e.g. deepseek) \u2014 explicit, not parsed from the id."},
+                "provider": {"type": ["string", "null"], "description": "Who served the call (the upstream provider)."},
+                "routing_strategy": {"type": ["string", "null"]},
+                "region": {"type": ["string", "null"]},
+                "generation_id": {"type": ["string", "null"], "description": "OpenRouter generation id."},
+                "finish_reason": {"type": ["string", "null"]},
+                "prompt_tokens": {"type": ["integer", "null"]},
+                "completion_tokens": {"type": ["integer", "null"]},
+                "cached_prompt_tokens": {"type": ["integer", "null"], "description": "Numerator of the cache-hit rate; differs sharply by call-site."},
+                "cost_usd": {"type": ["number", "null"]},
+                "outcome": {"type": ["string", "null"], "description": "ok / retry / split / a failure_kind."}
+              }
+            }
+          }
+        }
+      }
+    },
+    "results": {
+      "type": "object",
+      "description": "Headline outcome numbers, so one record answers both 'what did it cost' and 'what did it find'. Includes `artifact`, naming the result file this run produced.",
+      "properties": {
+        "artifact": {
+          "type": "string"
+        },
+        "alerts": {
+          "type": "integer"
+        },
+        "findings": {
+          "type": "integer"
+        },
+        "cost_usd": {
+          "type": "number",
+          "description": "Both LLM passes summed, from OpenRouter's own reported usage.cost \u2014 reported, never estimated."
+        },
+        "prompt_tokens": {
+          "type": "integer"
+        },
+        "completion_tokens": {
+          "type": "integer"
+        },
+        "model_calls": {
+          "type": "integer"
+        }
+      }
+    },
+    "label": {
+      "type": "string",
+      "description": "Distinguishes repeated runs of the same kind against one scan, mirroring the result artifact's --out-suffix. Without it a model-comparison run overwrites the baseline's metrics file while its result artifact survives \u2014 a silent, partial loss that happened once."
+    },
+    "config": {
+      "type": "object",
+      "description": "The *effective* configuration this stage ran with \u2014 every value as resolved after flags, env files and defaults were reconciled, not what any one of them said. The run id's configuration digest is computed from this same mapping for a stage that mints a run, so the short name in the directory can always be expanded into the settings behind it; for a stage that does not (a triage re-reading a stored scan) it is the only record of what distinguished this execution from another. Never carries a credential.",
+      "additionalProperties": true
+    },
+    "harness_id": {
+      "type": "string",
+      "description": "The harness sheet execution this record belongs to (`<timestamp>-<sheet>`), or \"\" for a run a person started. Recorded rather than inferred: until now the only trace of harness membership was which directory the run-index happened to live in, so a row joined with others at writing time could not say whether it was part of an experiment."
+    },
+    "harness_row": {
+      "type": "string",
+      "description": "Which row of that sheet, by name. Empty outside a harness run."
+    },
+    "abort": {
+      "type": ["object", "null"],
+      "description": "How the stage ended: null on a clean finish, else a {type, reason} object. The record is written on BOTH paths (RunMetrics.guard) so a stage that crashed still leaves a metrics file that says why it cost what it cost. `dast costs` reads the type into its own `abort` column.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "error (an unhandled exception), cancelled (Ctrl-C / a cancelled task), or a controlled stop such as budget-ceiling.",
+          "examples": ["error", "cancelled", "budget-ceiling"]
+        },
+        "reason": {
+          "type": "string",
+          "description": "The exception's type and message, kept because the type alone does not say whether the model refused, the schema failed or the transport dropped."
+        }
+      },
+      "required": ["type", "reason"]
+    }
+  }
+}

@@ -1,0 +1,39 @@
+# RESCAN · between-runs smoke — the plumbing the Phase-1 changes touch, live.
+# NOT a corpus sheet: a fast, FREE (scan-only, passive-only — no model calls)
+# check that the steps BETWEEN consecutive runs work on the live stack, before
+# the new freeze and the authenticated re-run. It exercises:
+#   - reset (--reset-target) then RE-LOGIN on the clean instance, verified
+#     THROUGH ZAP (658102c) — the bug the whole re-run exists to fix. A completed
+#     gitea-admin run PROVES it: _configure_zap aborts the scan with "ZAP is not
+#     logged in" otherwise.
+#   - the stale-session SWEEP reclaiming a prior run's directory at the next
+#     run's start (b1812b5) — the two gitea-admin rows share one daemon, and a
+#     planted dast-run-* leftover (see the runbook) must be gone after run 1.
+#   - Cacti's between-run reset/settle and that the self-recovery wiring is
+#     intact on a clean run (ad14bcb); triggering the actual flake is
+#     nondeterministic, so a clean pass proves the path, not the catch.
+#
+#   uv run dast harness config/harness/rerun-between-runs-smoke.yml
+#
+# Passive-only keeps each run to a few minutes; every between-run step runs
+# regardless of scan depth, so the plumbing is exercised in full.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 0.0            # scan-only: no model calls, nothing to spend
+  timeout_minutes: 90
+  env:
+    SCAN_RESET_TARGET: "on"
+    SCAN_ZAP_PASSIVE_ONLY: "on"
+    SHARED_ORACLE: "off"
+
+rows:
+  # Two consecutive authenticated gitea scans on one daemon: each resets, then
+  # re-logs-in on the clean instance and is verified logged in THROUGH ZAP; run 2
+  # also sweeps whatever run 1 (and any planted leftover) left behind. gitea-admin
+  # is where the logged-out bug bit hardest.
+  - {name: gitea-admin-1, target: gitea, stages: [scan], env: {SHARED_AUTH_MODE: admin}}
+  - {name: gitea-admin-2, target: gitea, stages: [scan], env: {SHARED_AUTH_MODE: admin}}
+  # Cacti, unauthenticated: its reset/settle and the recovery wiring on the
+  # between-run path, on the target that needs recovery at all.
+  - {name: cacti-none, target: cacti, stages: [scan], env: {SHARED_AUTH_MODE: none}}

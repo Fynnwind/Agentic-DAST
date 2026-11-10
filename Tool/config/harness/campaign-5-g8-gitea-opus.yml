@@ -1,0 +1,60 @@
+# CAMPAIGN · BLOCK 5 · G8 FRONTIER PROBE — Opus 5.5, ONE target (gitea), all 3
+# stages. Exploratory: "where does a stronger model add value?" (author, 2026-10-14).
+#
+# Frontier model = anthropic/claude-opus-5.5, provider PREFERENCE-ROUTED (empty,
+# served provider recorded — same policy as campaign synthesis, avoids a hard-pin
+# failure). Each row replaces ONE stage with Opus; the other stages stay at the
+# pinned defaults, so a difference is attributable to that stage. Read against the
+# default-model spread (G5/G6) on the SAME gitea-user-blind reference scan.
+# repeat 1 — a single frontier sample, read as inside/outside the default range
+# (RUN-PLAN §5 G8). Scale to more targets / repeats / Fable only if value shows.
+#   uv run dast harness config/harness/campaign-5-g8-gitea-opus.yml --dry-run
+#   uv run dast harness config/harness/campaign-5-g8-gitea-opus.yml
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 12.0        # sheet total ~$8-9 at Opus; headroom.
+  timeout_minutes: 240      # frontier latency unknown (P5/§7).
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    # Defaults for the NON-frontier stages (overridden per row for the probed one):
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: user
+    # Opus screening is ~$5.6 for gitea's 65-endpoint pass — above the usual $2
+    # per-run bound, so raise it for this probe (still a mistake-bound).
+    SHARED_RUN_MAX_COST_USD: "8.0"
+
+rows:
+  # G8a — frontier SCREENING (synthesis OFF): does a stronger model discover
+  # anything the default screening missed? (central claim says no.)
+  - {name: gitea-user-blind-frscr, run: 20261012T211124Z-gitea-2865f0, stages: [triage], env: {TRIAGE_SCREENING_MODEL: anthropic/claude-opus-5.5, TRIAGE_SCREENING_PROVIDER: "", TRIAGE_SYNTHESIS_ENABLED: "off"}}
+  # G8b — frontier SYNTHESIS (T V): more / more-reproducible cross-endpoint claims?
+  - {name: gitea-user-blind-frsyn, run: 20261012T211124Z-gitea-2865f0, stages: [triage, verify], env: {TRIAGE_SYNTHESIS_MODEL: anthropic/claude-opus-5.5, TRIAGE_SYNTHESIS_PROVIDER: ""}}
+  # G8c — frontier VERIFICATION on the base gitea triage: different outcomes / fewer
+  # inconclusives than the default verifier?
+  - {name: gitea-user-blind-frver, run: 20261012T211124Z-gitea-2865f0, stages: [verify], env: {VERIFY_MODEL: anthropic/claude-opus-5.5, VERIFY_PROVIDER: ""}}

@@ -1,0 +1,73 @@
+# RESCAN · G2 — the --oracle ceiling matrix (upper bound, never a detection rate).
+# Frozen rescan of 2026-11-03 (NEXT_SESSION §6, thesis docs/RERUN-PLAN.md §6).
+#
+#   uv run dast harness config/harness/rerun-g2-ceiling-matrix.yml   # the USER runs this
+#
+# WHAT THIS IS. The --oracle ceiling (`scan triage verify`, oracle_guided: true)
+# beside each G1 blind cell — what the pipeline reaches when handed the marker.
+# NEVER a detection number and never shared with a blind table (§P2).
+#
+# 12 ceiling cells = {grafana, wordpress, gitea} x {none, user, admin} HERE (9),
+# PLUS the 3 Cacti ceilings, which are NOT in this sheet: Cacti's OOB ceiling
+# RCEs the target and exhausts its MariaDB connections, so each Cacti ceiling is
+# run ONE-PER-INVOCATION through rerun-cacti-ceiling-driver.sh (docker restart +
+# login-readiness probe before each). See rerun-cacti-ceiling.yml. The two files
+# together are the 12-cell ceiling matrix.
+#
+# Config is G1's, with SHARED_ORACLE on and the report stage dropped.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 240
+  env:
+    # freeze commit: rerun-2026-11-03f
+    SCAN_RESET_TARGET: "on"
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "20"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "150"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "on"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == grafana ===============================================================
+  # grafana: TRIAGE_CODE_CONTEXT none — Noir extracts none of Grafana's routes
+  # (custom RouteRegister), so no handler can be located and the triage gate
+  # would refuse the row. Stated, not degraded. → DECISIONS.md.
+  - {name: grafana-none-ceiling,  target: grafana, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: none, TRIAGE_CODE_CONTEXT: none}}
+  - {name: grafana-user-ceiling,  target: grafana, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: user, TRIAGE_CODE_CONTEXT: none}}
+  - {name: grafana-admin-ceiling, target: grafana, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: admin, TRIAGE_CODE_CONTEXT: none}}
+
+  # == wordpress =============================================================
+  - {name: wordpress-none-ceiling,  target: wordpress, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: none}}
+  - {name: wordpress-user-ceiling,  target: wordpress, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: user}}
+  - {name: wordpress-admin-ceiling, target: wordpress, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: admin}}
+
+  # == gitea =================================================================
+  - {name: gitea-none-ceiling,  target: gitea, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: none}}
+  - {name: gitea-user-ceiling,  target: gitea, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: user}}
+  - {name: gitea-admin-ceiling, target: gitea, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: admin}}
+
+  # == cacti =================================================================
+  # NOT here — run via rerun-cacti-ceiling-driver.sh (one per invocation).

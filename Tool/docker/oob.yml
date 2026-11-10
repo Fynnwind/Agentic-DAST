@@ -1,0 +1,56 @@
+# The OUT-OF-BAND verification stack: the self-hosted interactsh sink and the
+# split-horizon DNS resolver that lets a scanned target reach it. Tool
+# infrastructure (it serves the `verify` stage's OOB confirmation), kept separate
+# from ephemeral.yml because a blind callback must outlive any one scan job.
+#
+# - Only needed for an `--oob` run (VERIFY_OOB); other targets never touch it.
+#   A target only POINTS at the resolver by IP (`dns: 172.19.0.252`, Cacti alone).
+# - Lifecycle: `docker compose -f docker/oob.yml up -d` / `... down`; requires the
+#   shared network (`docker network create dast-net`).
+name: dast-oob
+
+services:
+  # Self-hosted interactsh: the callback sink for blind vulns (SSRF, blind SQLi,
+  # blind command injection) that only prove themselves by making the target call
+  # out. Never the public oast.pro pool — self-hosted keeps interactions local and
+  # reproducible.
+  #
+  # - Reached on dast-net as `target-interactsh` (alias `interactsh` also
+  #   resolves; `interactsh-server` does not). nuclei polls it via `-iserver`.
+  # - `-ip` makes it answer its own domain with its dast-net address, so a
+  #   callback lands on this container.
+  interactsh:
+    # Pinned by digest (rescan freeze 2026-10-26); re-confirm with
+    # `docker images --digests projectdiscovery/interactsh-server`.
+    image: projectdiscovery/interactsh-server:v1.2.4@sha256:ffde50de2cdc9113b9bb024d9dbe63a7a4826de213be1cc63a7ffd5fd3b14481
+    container_name: target-interactsh
+    restart: unless-stopped
+    command: >
+      -domain interactsh.local
+      -ip 172.19.0.250
+      -http-port 8080
+      -disable-update-check
+    networks:
+      dast-net:
+        ipv4_address: 172.19.0.250
+
+  # Split-horizon DNS resolver: forwards *.interactsh.local to the interactsh
+  # sink's own DNS and everything else to Docker's embedded DNS, so an OOB target
+  # resolves a callback host without losing its ordinary lookups. See dns/Corefile.
+  # Only the scanned OOB target points its `dns:` at this static IP (172.19.0.252).
+  dns-resolver:
+    # Pinned by digest (rescan freeze 2026-10-26); re-confirm with
+    # `docker images --digests coredns/coredns`.
+    image: coredns/coredns:1.12.2@sha256:af8c8d35a5d184b386c4a6d1a012c8b218d40d1376474c7d071bb6c07201f47d
+    container_name: target-dns-resolver
+    restart: unless-stopped
+    command: -conf /Corefile
+    volumes:
+      - ./dns/Corefile:/Corefile:ro
+    networks:
+      dast-net:
+        ipv4_address: 172.19.0.252
+
+networks:
+  dast-net:
+    external: true

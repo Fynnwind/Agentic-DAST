@@ -1,0 +1,91 @@
+# RESCAN · G1 — the blind matrix (THE REPORTED CORPUS).
+# Frozen rescan of 2026-11-03 (NEXT_SESSION §6, thesis docs/RERUN-PLAN.md §6).
+#
+#   uv run dast harness config/harness/rerun-g1-blind-matrix.yml --dry-run
+#   uv run dast harness config/harness/rerun-g1-blind-matrix.yml   # the USER runs this
+#
+# WHAT THIS IS. Every target scanned blind (oracle OFF) at every session level —
+# 4 targets x {none, user, admin} = 12 cells, each a fresh `scan triage verify
+# report`. The detection numbers the thesis reports.
+#
+# WHAT CHANGED vs the campaign (the freeze): SCAN_RESET_TARGET is ON for every
+# scanning row, so each scan starts from the target's clean seeded snapshot and
+# carries its own config digest (the core rescan change). Verify is the single
+# default.env config (150 s / 30 / 20 min). Verify's provider is preference-
+# routed (empty pin -> require_parameters on; Friendli dropped minimax-m2.5).
+# Prompt versions pinned 3 / 5 / 2. Temperature 0.0 and seed 20260817 are code
+# constants (analysis/screening.py), frozen by the tag. Images are digest-pinned
+# and the ZAP add-on set is frozen (set 0) in the zap-plugins-frozen volume.
+#
+# ORDER IS EXECUTION ORDER and is FIXED: grafana, wordpress, cacti, gitea, and
+# within a target none, then user, then admin. Reset runs before each scan, so
+# the order no longer carries state between scans — but keep it for comparability.
+#
+# PREREQUISITES: the four targets are up; the four clean reset snapshots are
+# captured at the freeze commit (NEXT_SESSION §5); config/scanner/secrets.env
+# holds the key; the nuclei template volume is populated; zap-plugins-frozen is
+# populated; `--dry-run` clean. Write the freeze commit hash on the COMMIT line.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 240
+  env:
+    # --- COMMIT: fill with the freeze tag's commit before the first run -------
+    # freeze commit: rerun-2026-11-03f
+    # --- the core rescan change ----------------------------------------------
+    SCAN_RESET_TARGET: "on"
+    # --- the settled triage/verify config (frozen) ---------------------------
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    # --- models + providers (screening pinned; synthesis/verify routed) ------
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed; served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""             # preference-routed (Friendli dropped minimax-m2.5); do NOT pin
+    # --- verification = the current default.env (one config for the rescan) --
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "20"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "150"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    # --- pinned prompt versions + oracle off + per-run mistake-bound ---------
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == grafana ===============================================================
+  # grafana: TRIAGE_CODE_CONTEXT none — Noir extracts none of Grafana's routes
+  # (custom RouteRegister), so no handler can be located and the triage gate
+  # would refuse the row. Stated, not degraded. → DECISIONS.md.
+  - {name: grafana-none-blind,  target: grafana, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: none, TRIAGE_CODE_CONTEXT: none}}
+  - {name: grafana-user-blind,  target: grafana, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: user, TRIAGE_CODE_CONTEXT: none}}
+  - {name: grafana-admin-blind, target: grafana, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: admin, TRIAGE_CODE_CONTEXT: none}}
+
+  # == wordpress =============================================================
+  - {name: wordpress-none-blind,  target: wordpress, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: none}}
+  - {name: wordpress-user-blind,  target: wordpress, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: user}}
+  - {name: wordpress-admin-blind, target: wordpress, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: admin}}
+
+  # == cacti =================================================================
+  - {name: cacti-none-blind,  target: cacti, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: none}}
+  - {name: cacti-user-blind,  target: cacti, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: user}}
+  - {name: cacti-admin-blind, target: cacti, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: admin}}
+
+  # == gitea =================================================================
+  - {name: gitea-none-blind,  target: gitea, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: none}}
+  - {name: gitea-user-blind,  target: gitea, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: user}}
+  - {name: gitea-admin-blind, target: gitea, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: admin}}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thesis.local/schemas/harness-results.schema.json",
+  "title": "Harness sheet results",
+  "description": "Output of `dast harness`, written as data/harness/<sheet>/results.json. Carries every execution of the sheet, the flattened metrics row per completed run, and the cross-repeat variance — a named §T3 analyzer input. A dry run writes this too (dry_run:true, executions planned, metrics_rows empty). → docs/DATA.md.",
+  "type": "object",
+  "required": ["sheet", "executions", "metrics_rows"],
+  "properties": {
+    "sheet": {"type": "string", "description": "The sheet id (the harness directory name)."},
+    "started_at": {"type": "string"},
+    "base_env": {"type": ["string", "null"], "description": "The base env file the rows overlay."},
+    "dry_run": {"type": "boolean", "description": "True when the plan was written but nothing executed — metrics_rows is then empty."},
+    "executions": {
+      "type": "array",
+      "description": "One entry per row×repeat the sheet planned/ran.",
+      "items": {
+        "type": "object",
+        "required": ["row", "label"],
+        "properties": {
+          "row": {"type": "string"},
+          "repeat": {"type": ["integer", "null"]},
+          "label": {"type": "string", "description": "The out-suffix this row's artifacts carry."},
+          "stages": {"description": "The stage chain this row ran (list or mapping)."},
+          "run": {"type": ["string", "null"], "description": "The run id it produced, or null if it did not run/complete."},
+          "failed_stage": {"type": ["string", "null"], "description": "The stage that failed, or null."},
+          "reason": {"type": ["string", "null"]},
+          "seconds": {"type": ["number", "null"]},
+          "env_file": {"type": ["string", "null"], "description": "The per-row overlay written for this execution."}
+        }
+      }
+    },
+    "metrics_rows": {
+      "type": "array",
+      "description": "The flattened index row per completed metrics record (metrics.index_row): identity, totals, and the outcome counters. Empty on a dry run.",
+      "items": {
+        "type": "object",
+        "required": ["run", "kind"],
+        "properties": {
+          "run": {"type": "string"},
+          "kind": {"type": "string"},
+          "label": {"type": "string"},
+          "harness_id": {"type": "string"},
+          "harness_row": {"type": "string"},
+          "config_digest": {"type": "string"},
+          "model": {"type": ["string", "null"]},
+          "started_at": {"type": "string"},
+          "total_seconds": {"type": ["number", "null"]},
+          "stage_seconds": {"type": "object", "description": "Per-stage wall time."}
+        },
+        "additionalProperties": true
+      }
+    },
+    "variance": {
+      "type": "object",
+      "description": "Per-counter min/max/mean/spread over repeated rows of one configuration — the 'a difference smaller than the spread is not a difference' yardstick. Empty when no counter had ≥2 repeats.",
+      "additionalProperties": true
+    }
+  }
+}

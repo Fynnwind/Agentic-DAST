@@ -1,0 +1,65 @@
+name: balanced
+description: >
+  The default. Sends the whole request line and both header blocks always —
+  they are small, and for a large class of rules they ARE the proof — and a body
+  slice sized to what the rule class needs, centred on the observation rather
+  than taken from the top of the page.
+
+# What a rule class gets when it names nothing of its own.
+#
+# `body: head` rather than `none`, because a class this file has not enumerated
+# is by definition one nobody has judged, and the storage rule in evidence.py
+# has already erred generously for exactly that case. Sending the first 800
+# characters of a page is a cheap way of saying "here is what answered".
+defaults:
+  request_headers: all
+  response_headers: all
+  body: head
+  body_chars: 800
+
+classes:
+  # The header classes are proven by the headers above, and the body cannot
+  # speak to them: a missing Content-Security-Policy is missing whatever the
+  # page contains. This is where the excerpt policy earns most of its saving —
+  # 10021 and 10038 alone are ~5000 alerts on this target.
+  header:
+    body: none
+  cookie:
+    body: none
+  # ZAP's identification rules (10109/10111/10112) and its User-Agent fuzzer
+  # report on the shape of an exchange, never its content.
+  identification:
+    body: none
+    response_headers: all
+
+  # Reflection classes: the payload sits deep inside a 16 KB page, so the head
+  # of the body would miss it entirely. Centre the window on what ZAP observed.
+  xss:
+    body: around-match
+    body_chars: 900
+  ssti:
+    body: around-match
+    body_chars: 1200
+
+  # An injection verdict rests on how the application *failed*, so aim at the
+  # error text and fall back to the observation, then to the head.
+  sqli:
+    body: error-region
+    body_chars: 1200
+  injection:
+    body: error-region
+    body_chars: 900
+  disclosure:
+    body: around-match
+    body_chars: 900
+
+  # A redirect is settled by the status line and the Location header, both of
+  # which are above; a small body head only says which page it was.
+  redirect:
+    body: head
+    body_chars: 300
+  # A traversal verdict is "did the file's content come back", which is at the
+  # top of the body when it comes back at all.
+  traversal:
+    body: head
+    body_chars: 900

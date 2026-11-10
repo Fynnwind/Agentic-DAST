@@ -1,0 +1,62 @@
+# FINISH THE TWO BLIND ROWS THAT PREDATED THE SCHEMA FIX.
+#
+#   uv run dast harness config/harness/complete-baseline-2.yml --dry-run
+#   uv run dast harness config/harness/complete-baseline-2.yml
+#
+# In the complete-baseline.yml run, grafana-baseline and wordpress-baseline
+# triaged but their `verify` read hit the too-strict `suggested_tool` enum in
+# triage-result.schema.json (fixed same day) and exited 1 before the fix landed;
+# the other six rows reached verify after the fix and completed.
+#
+# These two re-run the WHOLE chain `triage verify report` on their stored SCANS
+# (via `run:`; triage reads the scan off disk — no re-scan). A verify-only row
+# reading the already-stored triage would have been tidier, but the harness's
+# pre-flight satisfiability check looks for the base `triage.json` and does not
+# account for the `--in-suffix` a `correlation:` row would pass, so it skips such
+# a row; and grafana/wordpress triage is seconds and cents, so re-triaging is the
+# clean path — it is exactly the one coherent `triage verify report` the canonical
+# sheet intended for the row. Config mirrors complete-baseline.yml's blind rows.
+#
+# PREREQUISITE: the grafana and wordpress targets still up (verify probes them);
+# config/scanner/secrets.env holds the key.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 2.0
+  timeout_minutes: 60
+  env:
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    SHARED_ORACLE: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+
+rows:
+  - name: grafana-baseline
+    run: 20260923T152305Z-grafana-4c733a
+    stages: [triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: admin
+
+  - name: wordpress-baseline
+    run: 20260923T154250Z-wordpress-ee000d
+    stages: [triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: user

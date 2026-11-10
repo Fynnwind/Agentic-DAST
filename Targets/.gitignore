@@ -1,0 +1,27 @@
+# Targets are DATA the tool scans — this dir holds one <name>/ per target, each
+# with its committed target.yml / cve-markers.yml / oracle.md / env scripts, and
+# these generated-or-cloned parts which are not committed:
+
+# Each target's source clone (shallow, at the pinned tag) and its container's
+# bind mount, inside that target's own directory. Reproducible from the tag and
+# 60MB+, so not vendored; the bind mount is runtime state.
+*/src/
+*/env/data/
+# Pinned artifacts a target's seed scripts fetch once and verify by hash (the
+# WordPress plugin zip): the hash in the script is the pin, the file is a cache.
+*/env/seed/
+# The clean starting state the auth-mode comparison restores between modes.
+*/env/data-snapshot.tar
+# A live data dir moved aside (never deleted) when scan payloads drift a target's
+# state mid-campaign; quarantined evidence, not corpus — recreate + reseed instead.
+*/env/data.drifted-*/
+# A contaminated data dir backed up aside before a reseed — same quarantine
+# rationale, and it carries runtime git/gitea state plus ssh keys; never corpus.
+*/env/data.contaminated-*/
+
+# Generated beside a target, not source (the ctags index and the live-probe
+# output). cve-markers.yml IS source and stays committed.
+*/ctags-index.json
+*/cve-probe.json
+
+.DS_Store

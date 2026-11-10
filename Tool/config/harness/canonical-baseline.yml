@@ -1,0 +1,263 @@
+# THE CANONICAL BASELINE — the four-target corpus the thesis quotes.
+#
+#   uv run dast harness config/harness/canonical-baseline.yml --dry-run
+#   uv run dast harness config/harness/canonical-baseline.yml
+#
+# This is a DRAFT: it has no number yet. The number is assigned when it is run
+# (see this directory's README) — rename it to `NN-canonical-baseline.yml` at
+# that point, where NN is the next in the series. It is unnumbered on purpose so
+# `dast harness` with no argument never picks it as the default experiment.
+#
+# It is not an optimisation pass — it moves no single variable and answers no
+# "does X change Y". It is the promotion: every target scanned FRESH on the
+# settled, final code, carried the whole chain, at the realistic nightly-CI
+# budget, so the write-up quotes one coherent corpus rather than a scatter of
+# runs taken at different points in the investigation. It is the four-target
+# successor to sheet 10 (which promoted Gitea + WordPress) and folds sheet 13's
+# ceiling into the same sheet so the ceiling is measured against the EXACT run
+# that was promoted, never a different scan.
+#
+# ===========================================================================
+# WHAT IT PRODUCES
+#
+#   Two things per target, in two phases:
+#
+#   1. THE BLIND BASELINE (rows 1-4) — `scan triage verify report`, oracle OFF.
+#      This is the promoted corpus and the discovery number: what the pipeline
+#      finds knowing nothing. One of these four run ids per target is THE
+#      baseline the thesis quotes; record them (see PROMOTION below).
+#
+#   2. THE ORACLE CEILING (rows 5-8) — `scan triage verify`, oracle ON. A
+#      SEPARATE scan (— `--oracle` seeds the documented sinks into the tree and
+#      changes the scan's config digest, so a blind run and an oracle run never
+#      share a corpus). This is the labelled upper bound: what the pipeline can
+#      confirm when it is TOLD what to look for and the sink is made reachable.
+#      NOT a detection rate, never in a table beside a blind number — every
+#      artifact it writes carries `oracle_guided: true` and every stage warns.
+#      See sheet 13's header for the full discipline; it all applies here.
+#
+#   The blind rows come first on purpose: they are the deliverable. If the night
+#   runs short or hits the cost ceiling, the promotion still completed and only
+#   the (recoverable, re-runnable) ceilings were lost.
+#
+# ===========================================================================
+# WHY THE PRUNE AND THE OOB SPECIALS
+#
+#   * `TRIAGE_PRUNE_NONINTERACTIVE_PHP` stays OFF here (its default). It is a
+#     Cacti-corpus optimisation (§R3.3) that has to be VALIDATED against this
+#     baseline — that nothing carrying an ACTIVE finding is dropped — before it
+#     is ever on for a promoted run. Validate it AFTER this sheet lands, by
+#     re-triaging Cacti's stored blind corpus with the flag on and diffing the
+#     candidate set. A promoted baseline is the blind default, prune off.
+#
+#   * Cacti's flagship (CVE-2022-46169, unauth RCE) is confirmed OUT OF BAND:
+#     ZAP's blind injection does not fire rule 90020, so the blind Cacti row is
+#     expected 0/1 on it. The Cacti CEILING row turns on `VERIFY_OOB` and the
+#     oracle seed, and nuclei confirms the RCE via interactsh. That row — and
+#     only that row — needs the tool OOB stack (docker/oob.yml: interactsh +
+#     split-horizon dns-resolver) up (see PREREQUISITES).
+#
+# ===========================================================================
+# PREREQUISITES — all of them, before a paid run
+#
+#   * All four persistent targets up on the remapped ports 8000-8003, and
+#     seeded. A container predating the port remap needs
+#     `docker compose -f Targets/persistent.yml up -d --force-recreate`.
+#   * The ephemeral ZAP job up (docker/ephemeral.yml, `-Xmx8g`), and ENOUGH
+#     DAEMON MEMORY: Gitea's authenticated scan peaked at 10.4 GB and was
+#     OOM-killed once at 92% inside a 14.6 GB Docker VM. Check `docker info`
+#     MemTotal and that nothing large shares the VM before a multi-hour sheet.
+#   * Source trees present for all four (Noir + ctags read them):
+#     Targets/<name>/src.
+#   * The pinned nuclei template volume populated, or every nuclei probe returns
+#     `inconclusive: ran no templates` and the Cacti OOB confirmation cannot fire.
+#   * FOR THE CACTI CEILING ONLY: the tool OOB stack up —
+#     `docker compose -f docker/oob.yml up -d` (interactsh + split-horizon
+#     dns-resolver) — and `VERIFY_INTERACTSH_SERVER` reachable from the verify
+#     container, else the OOB run degrades to a blind one and confirms nothing.
+#   * Per-target auth accounts seeded: Grafana's admin (GF_SECURITY_ADMIN_*),
+#     WordPress's user (seed-users.sh), Gitea's user. Cacti runs unauth — its two
+#     authenticated markers are out of scope for a promotion whose flagship is
+#     the unauth RCE.
+#   * `--dry-run` clean. It writes every env overlay and costs nothing.
+#
+# ===========================================================================
+# HOW TO READ IT, AND THE PROMOTION STEP
+#
+#   1. `uv run dast run-index` — wall time and cost per stage, per target. The
+#      "does it fit a CI job" number, now on one fresh four-target corpus.
+#   2. `uv run dast cve <run>` for each BLIND row — detection per layer, both
+#      bounds. Read the STRICT column; the generous one counts a rule of the
+#      right class firing anywhere.
+#   3. For each target, build the per-marker table: blind (rows 1-4) vs ceiling
+#      (rows 5-8), per layer. The interesting cell is a marker UNDETECTED blind
+#      and CONFIRMED under the ceiling — a defect with an address, or, for the
+#      flagship Cacti RCE, the OOB confirmation the blind scan cannot reach.
+#   4. THE AGREEMENT TRAP (sheet 13, check 3): before believing any ceiling lift,
+#      confirm the oracle row's flagged count did not balloon on findings
+#      unrelated to any marker, and that "already hardened" items stay unconfirmed.
+#
+#   PROMOTE: record the four BLIND run ids as the baseline — one per target — in
+#   `.claude/CLAUDE.md`'s "Current status", and note each ceiling run id beside
+#   it as the labelled upper bound. That written record is what "the corpus the
+#   thesis quotes" means; without it the promotion did not happen.
+#
+# GUARDRAILS: `llm_findings_unanswered` near 0 on every blind row; every ceiling
+# artifact carries `oracle_guided: true` (a row that silently ran blind and is
+# filed as a ceiling is the one outcome this sheet must not produce); the Cacti
+# ceiling's verify artifact shows the OOB probe actually ran (not `inconclusive:
+# ran no templates`); spend under the ceiling below.
+#
+#   DO NOT TUNE FROM THIS SHEET. One row per target per mode, no repeats — every
+#   number is a single sample, and this project has measured twice that a single
+#   sample of an LLM judgement is not a measurement. It is the corpus and the
+#   order of magnitude. Variance is sheet 15's instrument, run on the stored
+#   corpus this one promotes.
+# ===========================================================================
+
+defaults:
+  base_env: config/scanner/.env
+  # Generous: eight full/near-full chains, four of them re-sending the oracle
+  # block. The measured chains cost $0.13-0.37 each; this is headroom, not a
+  # budget, and it still stops a mistake running all night. Lower it with
+  # `--max-cost` for a partial run.
+  max_cost_usd: 8.0
+  # Cacti's pass-1 alone was ~76 min over 342 endpoints, plus a 45-min scan and
+  # verify; the others are far shorter. Sized for the worst row.
+  timeout_minutes: 200
+  env:
+    # A realistic nightly-CI scan budget (sheet 10's, measured). Not a smoke
+    # budget and not unbounded — the number the thesis argues fits a CI job.
+    SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "45"
+    SCAN_ZAP_MAX_RULE_MINUTES: "5"
+    # The settled triage defaults, pinned so the baseline records what it sent
+    # rather than inheriting whatever .env holds when it is finally run. Update
+    # these together if the pinned defaults have moved by run time.
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    # The prune stays OFF for a promoted baseline — validate it against this
+    # corpus first (see the header). Pinned explicitly so the record says so.
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    # Verification at the settled hybrid: the model picks nothing, the table
+    # routes, the model judges. Siblings and OOB off in the blind default;
+    # the Cacti ceiling row turns OOB on.
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    # Blind by default; the ceiling rows below flip this one switch, which
+    # reaches scan, triage, synthesis and verification together.
+    SHARED_ORACLE: "off"
+    # Prompt versions pinned, same reason as the models. "Newest on disk" is
+    # whatever .env resolves to; a baseline must state what it sent.
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+
+rows:
+  # ==========================================================================
+  # PHASE 1 — THE BLIND BASELINES. The promoted corpus, in priority order:
+  # the deliverable, completed before a dollar is spent on a ceiling.
+  # ==========================================================================
+
+  # Grafana — auth-gated. `--auth admin` (only an admin account is declared;
+  # sign-up is disabled, so a scan cannot mint its own). Its target.yml already
+  # runs both spiders (traditional then the client/browser crawler, needed for
+  # the React SPA). Blind is expected 0/1 strict on CVE-2021-43798 — the
+  # traversal sink is not in the tree without the oracle seed; the ceiling is
+  # where it is reached.
+  - name: grafana-baseline
+    target: grafana
+    stages: [scan, triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: admin
+
+  # WordPress — `--auth user` (the full-jar authenticated scan reaches wp-admin).
+  # Its one DAST-reachable marker (rule 40026 at the seeded wpdm frameid sink)
+  # is this project's first ground-truth-confirmed detection; the package_ids
+  # SQLi is reachable under auth but scan-scale-bound (may not fit the cap).
+  - name: wordpress-baseline
+    target: wordpress
+    stages: [scan, triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: user
+
+  # Cacti — UNAUTH (the flagship CVE-2022-46169 is unauth). Its target.yml
+  # already sends `X-Forwarded-For: 127.0.0.1` past remote_agent's poller check.
+  # The MOST EXPENSIVE triage (342 endpoints, ~76 min pass 1) — this is the row
+  # the timeout and cost ceiling are sized for. Blind is expected 0/1 on the RCE
+  # (ZAP rule 90020 does not fire on the blind injection); the ceiling confirms
+  # it out of band.
+  - name: cacti-baseline
+    target: cacti
+    stages: [scan, triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: none
+
+  # Gitea — `--auth user` (its documented cluster sits behind login). Runs LAST
+  # of the blinds because its authenticated scan is the memory-fragile one
+  # (10.4 GB peak, OOM-killed once); a repeat then costs one row, and the other
+  # three baselines are already safely on disk. Blind ~0/2 strict — most of its
+  # cluster is not DAST-reachable in principle, which the ceiling then shows.
+  - name: gitea-baseline
+    target: gitea
+    stages: [scan, triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: user
+
+  # ==========================================================================
+  # PHASE 2 — THE ORACLE CEILINGS. A fresh oracle-seeded scan per target; the
+  # labelled upper bound, never a detection number. `scan triage verify` (no
+  # report — the ceiling is a measurement, not a deliverable artifact set).
+  # ==========================================================================
+
+  - name: grafana-ceiling
+    target: grafana
+    stages: [scan, triage, verify]
+    env:
+      SHARED_AUTH_MODE: admin
+      SHARED_ORACLE: "on"
+
+  - name: wordpress-ceiling
+    target: wordpress
+    stages: [scan, triage, verify]
+    env:
+      SHARED_AUTH_MODE: user
+      SHARED_ORACLE: "on"
+
+  # Cacti's ceiling is the flagship: oracle-seeded scan puts the remote_agent
+  # sink in the tree, and `VERIFY_OOB` lets nuclei confirm CVE-2022-46169 via
+  # interactsh. THIS ROW needs the tool OOB stack up — `docker compose -f
+  # docker/oob.yml up -d` (see PREREQUISITES); without it the run degrades to
+  # blind and confirms nothing.
+  - name: cacti-ceiling
+    target: cacti
+    stages: [scan, triage, verify]
+    env:
+      SHARED_AUTH_MODE: none
+      SHARED_ORACLE: "on"
+      VERIFY_OOB: "on"
+      # The callback host must be a WILDCARD the split-horizon resolver answers:
+      # `interactsh.local` (+ the resolver as DNS), never `target-interactsh` —
+      # nuclei's <id>.<host> callback domain has to resolve for both nuclei and
+      # the target, and a container name is not a wildcard. See nuclei_server.py.
+      VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+      VERIFY_INTERACTSH_DNS: "172.19.0.252"
+
+  - name: gitea-ceiling
+    target: gitea
+    stages: [scan, triage, verify]
+    env:
+      SHARED_AUTH_MODE: user
+      SHARED_ORACLE: "on"

@@ -1,0 +1,948 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thesis.local/schemas/triage-result.schema.json",
+  "title": "Triage result artifact",
+  "description": "Output of the triage stage (src/dast_orchestrator/stages/triage/), written as data/<run>/triage[-<suffix>].json. Carries both arms of the experiment side by side on every finding: the deterministic rescan table (control) and the LLM screening arm (experimental, pass 1), plus the parameters that produced them. Nothing here is dispatched or exported to SARIF yet; that is the verify/report stages.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "generated_at",
+    "source",
+    "join",
+    "rescan_table",
+    "summary",
+    "findings",
+    "correlated_findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Bumped whenever a consumer-visible field changes."
+    },
+    "run_id": {
+      "type": "string",
+      "description": "The run this artifact belongs to and the directory holding it: `<timestamp>-<target>-<config>` (run_paths.make_run_id), where the last field is a digest of the configuration that produced the run; both trailing fields are optional. The join key to every other artifact of the run \u2014 the scan, the other verdicts, the report, and the SAST/SCA baselines when they were run into the same folder.",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z(-[A-Za-z0-9_.]+)?(-[0-9a-f]{6})?$"
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "The scan's UTC instant, unchanged from the id's timestamp half. Kept beside `run_id` so an artifact still states when the run happened without parsing its id.",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z$"
+    },
+    "source": {
+      "type": "object",
+      "description": "Provenance of the scan this triage read: its target, ZAP version and the source artifacts joined. Named `source` (not `run`) so it is not confused with the run id beside it — triage is sourced from a stored scan, it does not mint a run.",
+      "required": [
+        "target",
+        "zap_alerts",
+        "ai_context",
+        "seed_map"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "zap_version": {
+          "type": "string"
+        },
+        "zap_alerts": {
+          "type": "string"
+        },
+        "ai_context": {
+          "type": "string"
+        },
+        "seed_map": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "null for scans recorded before the seed map existed; the join then used the regex tier for everything, which the tier counts show."
+        }
+      }
+    },
+    "join": {
+      "type": "object",
+      "description": "How concrete ZAP URLs were mapped back onto Noir route templates.",
+      "required": [
+        "tiers",
+        "seed_map_available",
+        "absent_reasons"
+      ],
+      "properties": {
+        "tiers": {
+          "type": "array",
+          "description": "Tiers in priority order: seed (exact, recorded at seeding time), regex (template read backwards, catches spider-discovered URLs), regex-path-only (path matched but the method did not \u2014 a weaker claim, kept separate).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "seed_map_available": {
+          "type": "boolean"
+        },
+        "absent_reasons": {
+          "type": "object",
+          "description": "Why a finding can end up with no static context. absent-api-router-gap is the measured Noir recall limitation on Gitea's locally-constructed API router and must not be reported as a generic miss."
+        }
+      }
+    },
+    "rescan_table": {
+      "type": "object",
+      "description": "The control arm's full lookup table, embedded so a stored result is self-describing and the thesis appendix can be generated from it.",
+      "required": [
+        "version",
+        "rules"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "plugin_id",
+              "name",
+              "policy",
+              "rationale"
+            ],
+            "properties": {
+              "plugin_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "policy": {
+                "enum": [
+                  "always",
+                  "when_uncertain",
+                  "never"
+                ]
+              },
+              "tool": {
+                "type": "string"
+              },
+              "rationale": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string",
+                "description": "Which ZAP stage raised the alert, decoded from its `sourceid` (active-scanner, passive-scanner, spider, manual, tool). Carried because it is the difference between a finding the scanner INJECTED for and one a passive rule GUESSED at, and an independent verification tool can only settle the first kind \u2014 there was never an attack to repeat for the second. `verification.dispatch_priority` sorts on it within each risk band."
+              }
+            }
+          }
+        }
+      }
+    },
+    "llm": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "null when the pass ran with --no-llm. Otherwise every parameter needed to reproduce the run, including the verbatim system prompt and output schema.",
+      "required": [
+        "model",
+        "temperature",
+        "prompt_version",
+        "system_prompt",
+        "response_schema",
+        "usage"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Pinned OpenRouter model id. Never a floating alias, same rule as the container image tags."
+        },
+        "temperature": {
+          "type": "number"
+        },
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_tokens": {
+          "type": "integer"
+        },
+        "prompt_version": {
+          "type": "integer"
+        },
+        "system_prompt": {
+          "type": "string"
+        },
+        "response_schema": {
+          "type": "object"
+        },
+        "candidate_bundles": {
+          "type": "integer"
+        },
+        "usage": {
+          "type": "object",
+          "description": "Reported cost of the arm, so 'is this affordable per CI run' is answered with a number.",
+          "required": [
+            "calls",
+            "prompt_tokens",
+            "completion_tokens",
+            "cost_usd",
+            "failed_calls",
+            "retried_calls",
+            "failure_kinds"
+          ],
+          "properties": {
+            "calls": {
+              "type": "integer"
+            },
+            "prompt_tokens": {
+              "type": "integer"
+            },
+            "completion_tokens": {
+              "type": "integer"
+            },
+            "cost_usd": {
+              "type": "number"
+            },
+            "failed_calls": {
+              "type": "integer"
+            },
+            "retried_calls": {
+              "type": "integer",
+              "description": "Calls retried after a malformed response."
+            },
+            "failure_kinds": {
+              "type": "object",
+              "description": "Failure counts by cause (truncated / empty_reasoning_only / not_json / ...), so a lossy run says HOW it was lossy."
+            },
+            "split_chunks": {
+              "type": "integer",
+              "description": "Chunks halved and re-sent after truncating. Distinct from a retry: the call is replaced by two smaller ones rather than repeated."
+            },
+            "providers": {
+              "type": "object",
+              "description": "Call count per upstream provider that actually served a request. OpenRouter may route one run across several providers, changing latency and price, so this is recorded rather than assumed constant."
+            },
+            "latency_ms": {
+              "type": "object",
+              "description": "min / median / max / total call latency in milliseconds."
+            },
+            "calls_log": {
+              "type": "array",
+              "description": "One record per HTTP call: timestamp, pass, latency, requested vs served model, provider, routing strategy, region, OpenRouter generation id, finish_reason, tokens, cost and outcome. Per-call rather than aggregated so the writeup can report a latency distribution and trace any single call back to OpenRouter's dashboard via its generation id.",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "dropped_unknown_finding_ids": {
+          "type": "array",
+          "description": "finding_ids the model returned that were never in its prompt. Dropped rather than trusted; counted because a non-zero value is a reportable reliability signal.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "model_capabilities": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "What the model advertises on OpenRouter's public catalogue at run time (seed, structured_outputs, response_format, context_length, pricing), or null when the catalogue could not be read \u2014 a missing measurement and a measured 'no' must stay distinguishable. Recorded next to the *requested* parameters because the two can disagree silently: OpenRouter drops `seed` for providers that do not accept it, so a seed listed here without this block would claim a determinism the run may not have had."
+        },
+        "seed_supported": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Whether the served model accepts `seed` at all. False means the seed above was requested and dropped \u2014 the run is not reproducible by seed, which the archived raw responses exist to compensate for."
+        },
+        "concurrency": {
+          "type": "integer",
+          "description": "How many pass-1 calls were in flight at once. Recorded because it is the difference between the per-call latencies in `usage.latency_ms` and the stage's wall time in the metrics record \u2014 without it the two look contradictory. 1 is the sequential behaviour; the verdicts are identical either way."
+        },
+        "pass1_context": {
+          "type": "string",
+          "enum": [
+            "none",
+            "peers",
+            "full",
+            ""
+          ],
+          "description": "How much each pass-1 call was told about the endpoints it was not shown: 'none' (one endpoint per call \u2014 the shape of every run before 2026-08-26), 'siblings' (where else in this scan the same rule fired), 'full' (plus which of those routes run the same handler code). Recorded next to prompt_version because it changes what the prompt *contained* without changing the prompt itself; two runs that differ here are not comparable on self-consistency."
+        },
+        "retrieval": {
+          "type": "object",
+          "description": "How pass 1 got its evidence, and \u2014 in pull mode \u2014 every retrieval it made. `mode` is push or pull; a push run carries nothing else. A pull run also records the tools the read-only context MCP server declared (what the model was OFFERED is half of 'did it pull the right things'), the per-finding budget, and one entry per retrieval with the tool, the arguments in full, the latency and the bytes returned.",
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "push",
+                "pull"
+              ]
+            },
+            "server": {
+              "type": "string"
+            },
+            "max_calls_per_finding": {
+              "type": "integer"
+            },
+            "tools_declared": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "calls": {
+              "type": "integer"
+            },
+            "failed_calls": {
+              "type": "integer"
+            },
+            "refused_over_budget": {
+              "type": "integer"
+            },
+            "bytes_returned": {
+              "type": "integer"
+            },
+            "calls_by_tool": {
+              "type": "object"
+            },
+            "log": {
+              "type": "array",
+              "description": "One entry per retrieval, sorted by endpoint then time so the list does not depend on which worker finished first.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "at",
+                  "label",
+                  "tool",
+                  "arguments",
+                  "bytes",
+                  "found"
+                ],
+                "properties": {
+                  "at": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "tool": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "latency_ms": {
+                    "type": "number"
+                  },
+                  "bytes": {
+                    "type": "integer"
+                  },
+                  "found": {
+                    "type": "boolean"
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "tools_withheld_because_already_pushed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Tools the context server declares but the model was not offered, because the pushed pack already carries what they return. Recorded so 'what the model could ask for' is not inferred from the server's own tool list."
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "Precomputed counts, including the arm-vs-arm delta that is the point of Phase 3.",
+      "required": [
+        "bundles",
+        "raw_alerts",
+        "findings",
+        "alerts_by_join_tier",
+        "alerts_by_zap_source",
+        "deterministic_rescans",
+        "llm_findings_asked",
+        "llm_evaluated_findings",
+        "llm_findings_unanswered",
+        "llm_rescans",
+        "agreement"
+      ],
+      "properties": {
+        "bundles": {
+          "type": "integer"
+        },
+        "bundles_with_static_context": {
+          "type": "integer"
+        },
+        "raw_alerts": {
+          "type": "integer",
+          "description": "ZAP alerts before duplicate collapsing; matches alert_count in the scan report."
+        },
+        "findings": {
+          "type": "integer",
+          "description": "After collapsing identical alerts across concrete URLs of one route template."
+        },
+        "alerts_by_join_tier": {
+          "type": "object"
+        },
+        "deterministic_rescans": {
+          "type": "integer"
+        },
+        "llm_evaluated_findings": {
+          "type": "integer"
+        },
+        "llm_rescans": {
+          "type": "integer"
+        },
+        "agreement": {
+          "type": "object",
+          "description": "Counts of both / deterministic-only / llm-only / neither over answered findings, plus asked-no-verdict (sent to the model, no verdict returned) and not-evaluated (never sent). The last two are kept apart on purpose: conflating them overstates how much the LLM arm actually covered."
+        },
+        "correlated_synthesis_findings": {
+          "type": "integer"
+        },
+        "alerts_by_zap_source": {
+          "type": "object",
+          "description": "Alert counts by the ZAP stage that produced them (active-scanner / passive-scanner / manual / tool), decoded from each alert's sourceid. A run that is almost entirely passive-scanner has not exercised the active scanner, and the downstream triage numbers must be read in that light."
+        },
+        "llm_findings_asked": {
+          "type": "integer",
+          "description": "Findings actually put in front of the model."
+        },
+        "llm_findings_deferred": {
+          "type": "integer",
+          "description": "Pass-1 candidates the limit on findings beyond the old gate left unsent; not in `llm_findings_asked`. Absent in runs before 2026-11-02."
+        },
+        "llm_findings_unanswered": {
+          "type": "integer",
+          "description": "Asked minus answered: findings the model was given and returned no verdict for, whether the call failed or the model silently omitted them. The honest denominator for the agreement counts."
+        },
+        "top_rules": {
+          "type": "array",
+          "description": "ZAP rules by alert volume, most first. Stored because the active/passive split alone is misleading: in the 60-minute run 4931 of 4939 active-scanner alerts were rule 10104 (User Agent Fuzzer), a noise rule. Any claim about scan productivity must be read against this.",
+          "items": {
+            "type": "object",
+            "required": [
+              "plugin_id",
+              "name",
+              "risk",
+              "alerts"
+            ],
+            "properties": {
+              "plugin_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "risk": {
+                "type": "string"
+              },
+              "alerts": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "rescans_by_rule": {
+          "type": "object",
+          "description": "Deterministic rescan flags per ZAP rule \u2014 the dispatch workload Phase 4 inherits. One rule supplying most of it is a budget decision waiting to happen."
+        },
+        "rescans_by_tool": {
+          "type": "object",
+          "description": "The same workload split by the verification tool that would be dispatched."
+        },
+        "deterministic_rescans_unroutable": {
+          "type": "integer",
+          "description": "Findings the control arm flagged for rescan while naming NO tool, so nothing can verify them. A defect in the table rather than a property of the corpus: an unenumerated rule escalates on risk alone through UNKNOWN_RULE_POLICY and names no tool, and verification then records `not-attempted` for a reason that reads like a budget decision. 200 of 283 flagged findings on the 2026-09-04 WordPress baseline, one of which was rule 40026 — the only ground-truth-confirmed detection in the corpus."
+        },
+        "unroutable_rescan_rules": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "The distinct ZAP plugin ids behind `deterministic_rescans_unroutable`. Each is a rule that needs a row in the rescan table — or a considered NEVER, which is also a decision."
+        },
+        "llm_self_consistency": {
+          "type": "object",
+          "description": "How often the LLM arm gave one ZAP rule two different verdicts. Pass 1 sees exactly one endpoint per call and so cannot know it judged the same rule differently next door \u2014 pass 2 caught it doing so on rule 10031 across two routes sharing a handler. This is that anecdote as a number, computed the same way every run, so the effect of --pass1-context can be measured. Only answered findings count: an unanswered one is not a disagreement, and counting it as agreement would let a lossy run look consistent.",
+          "properties": {
+            "rules_judged": {
+              "type": "integer"
+            },
+            "rules_with_split_verdicts": {
+              "type": "integer",
+              "description": "Rules judged both ways anywhere in the scan. Some of this is legitimate \u2014 two routes with the same rule and genuinely different code should differ."
+            },
+            "shared_handler_comparisons": {
+              "type": "integer"
+            },
+            "shared_handler_contradictions": {
+              "type": "integer",
+              "description": "The measure that matters: the same rule judged both ways on two routes running the SAME handler function, where the code is identical and a split verdict is a contradiction unless the reasoning names endpoint-specific evidence."
+            },
+            "shared_handler_examples": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "One per (endpoint, collapsed alert). Every finding traces back to at least one ZAP alert id.",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "correlated_findings": {
+      "type": "array",
+      "description": "LLM-proposed findings that are NOT attributable to a single ZAP alert \u2014 the reason Phase 4's SARIF export needs a second rule-id namespace linked by result.relationships.",
+      "items": {
+        "$ref": "#/$defs/correlatedFinding"
+      }
+    },
+    "synthesis": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Pass 2: the single cross-endpoint synthesis call. null when it did not run (--no-synthesis, or --no-llm). Kept separate from `llm` because the two passes ask different questions with different prompts, and a reader has to be able to tell which one produced a given finding.",
+      "properties": {
+        "prompt_version": {
+          "type": "integer"
+        },
+        "system_prompt": {
+          "type": "string"
+        },
+        "response_schema": {
+          "type": "object"
+        },
+        "models": {
+          "type": "array",
+          "description": "The ensemble: the ids every sample was drawn from, discovery model first. One element is the single-model default. The `model_capabilities`, `seed_supported` and `temperature_supported` maps below are keyed by these ids.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Requested decoding temperature — the shared constant every ensemble member was sent through the one send site. Scalar because it is not model-specific; whether a given model honoured it is `temperature_supported`."
+        },
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Requested decoding seed — the shared constant sent to every member. Scalar; `seed_supported` says per model whether it was accepted."
+        },
+        "model_capabilities": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Per ensemble model id, what that model advertises on OpenRouter's public catalogue at run time (seed, structured_outputs, response_format, context_length, pricing), or null for an id whose catalogue entry could not be read — a missing measurement and a measured 'no' must stay distinguishable. Recorded next to the *requested* parameters because the two can disagree silently: OpenRouter drops `seed` for providers that do not accept it. Keyed by model because this pass alone can run several."
+        },
+        "seed_supported": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Per ensemble model id, whether that served model accepts `seed` at all (true / false / null when unknown). False means the seed above was requested and dropped for that model — that member's samples are not reproducible by seed, which the archived raw responses exist to compensate for. Keyed by model, unlike the triage `llm` block's scalar, because synthesis can be an ensemble."
+        },
+        "temperature_supported": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Per ensemble model id, whether that served model accepts `temperature`. Keyed by model for the same reason as `seed_supported`."
+        },
+        "endpoints_in_corpus": {
+          "type": "integer",
+          "description": "Endpoints the one synthesis call saw simultaneously. Pass 1 sees exactly one per call, which is why it cannot produce these findings."
+        },
+        "findings_in_corpus": {
+          "type": "integer"
+        },
+        "shared_handlers": {
+          "type": "integer",
+          "description": "Handler functions reached by more than one route: the propagation links this pass is built around."
+        },
+        "dropped_uncited_findings": {
+          "type": "integer",
+          "description": "Synthesis findings discarded for citing no real finding_id. The pass's whole claim is that its output rests on observed evidence, so one citing nothing observable is indistinguishable from a guess."
+        },
+        "failed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "type": "object"
+        }
+      }
+    },
+    "evidence": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "What this run's prompts actually held: the excerpt policy in full, how many HTTP exchanges the message sidecar carried, the code-context level and \u2014 when source was resolved \u2014 the ctags index behind it plus how many endpoints did and did not get a handler-source block. Null when the LLM arm did not run. Recorded here and not only in the run metrics because a stored correlation must be able to say what evidence produced it: a source-grounded run and a blind one are not comparable, and the verification loop reads this to resolve the SAME handler source triage saw rather than guessing at a level.",
+      "properties": {
+        "excerpt_policy": {
+          "type": "object"
+        },
+        "http_exchanges_available": {
+          "type": "integer"
+        },
+        "code_context_level": {
+          "type": "string"
+        },
+        "retrieval_mode": {
+          "type": "string"
+        },
+        "endpoints_with_source": {
+          "type": "integer"
+        },
+        "endpoints_without_source": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "finding_id",
+        "endpoint_key",
+        "static_context",
+        "static_context_present",
+        "method",
+        "path",
+        "alert",
+        "deterministic",
+        "llm",
+        "llm_asked",
+        "agreement"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string",
+          "description": "Stable across runs: a hash of the endpoint plus the whole key the alerts were collapsed on (rule, method, parameter, confidence, risk, evidence-prefix), so two runs of the same target can be diffed and the two arms compared over time. Method and risk were missing from the hash before 2026-09-02, which gave two findings of one endpoint the same id whenever a rule fired on two verbs.",
+          "pattern": "^f-[0-9a-f]{12}$"
+        },
+        "endpoint_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Noir route template key, or null when no static context could be joined."
+        },
+        "static_context": {
+          "enum": [
+            "seed",
+            "regex",
+            "regex-path-only",
+            "absent-api-router-gap",
+            "absent-unmatched"
+          ],
+          "description": "Join tier that dominated this finding's alerts."
+        },
+        "static_context_present": {
+          "type": "boolean"
+        },
+        "match_alternatives": {
+          "type": "array",
+          "description": "Other route templates that also matched this URL, kept rather than discarded because a collapsed template is a real ambiguity the reader should see.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "alert": {
+          "type": "object",
+          "required": [
+            "plugin_id",
+            "name",
+            "risk",
+            "confidence",
+            "instances",
+            "zap_alert_ids"
+          ],
+          "properties": {
+            "plugin_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "risk": {
+              "enum": [
+                "Informational",
+                "Low",
+                "Medium",
+                "High"
+              ]
+            },
+            "confidence": {
+              "type": "string"
+            },
+            "param": {
+              "type": "string"
+            },
+            "attack": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "string"
+            },
+            "cweid": {
+              "type": "string"
+            },
+            "alert_ref": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "instances": {
+              "type": "integer",
+              "description": "How many raw ZAP alerts collapsed into this finding.",
+              "minimum": 1
+            },
+            "join_tiers": {
+              "type": "object"
+            },
+            "example_urls": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "zap_alert_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "deterministic": {
+          "type": "object",
+          "description": "Control arm. Pure function of the table plus plugin id, confidence and risk.",
+          "required": [
+            "needs_rescan",
+            "policy",
+            "in_table",
+            "reason"
+          ],
+          "properties": {
+            "needs_rescan": {
+              "type": "boolean"
+            },
+            "policy": {
+              "enum": [
+                "always",
+                "when_uncertain",
+                "never"
+              ]
+            },
+            "in_table": {
+              "type": "boolean",
+              "description": "false means the fallback policy for unclassified rules decided this."
+            },
+            "tool": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        "llm": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "null when the bundle was not a model candidate (informational-only), or when the pass did not run.",
+          "required": [
+            "needs_rescan",
+            "verdict",
+            "confidence",
+            "reasoning",
+            "suggested_tool"
+          ],
+          "properties": {
+            "needs_rescan": {
+              "type": "boolean"
+            },
+            "verdict": {
+              "enum": [
+                "likely-true-positive",
+                "likely-false-positive",
+                "undecidable-without-verification",
+                "self-evident-no-verification-needed"
+              ]
+            },
+            "confidence": {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "reasoning": {
+              "type": "string"
+            },
+            "suggested_tool": {
+              "enum": [
+                "sqlmap",
+                "nuclei",
+                "ffuf",
+                "interactsh",
+                "self-evident",
+                "out-of-scope",
+                "none"
+              ]
+            },
+            "had_source": {
+              "type": "boolean",
+              "description": "Whether the prompt held this endpoint's handler source, or could retrieve it. Absent on records from before it was added."
+            }
+          }
+        },
+        "agreement": {
+          "enum": [
+            "both",
+            "deterministic-only",
+            "llm-only",
+            "neither",
+            "asked-no-verdict",
+            "not-evaluated"
+          ],
+          "description": "Per-finding delta between the arms. asked-no-verdict = the model was given this finding and returned nothing for it; not-evaluated = it was never sent."
+        },
+        "llm_asked": {
+          "type": "boolean",
+          "description": "Whether this finding was put to the model. True with a null `llm` means asked and unanswered."
+        },
+        "llm_deferred": {
+          "type": "boolean",
+          "description": "A pass-1 candidate the limit on findings beyond the old gate (`TRIAGE_MAX_UNMATCHED_FINDINGS`) left unsent. Absent in runs before 2026-11-02."
+        }
+      }
+    },
+    "correlatedFinding": {
+      "type": "object",
+      "required": [
+        "finding_id",
+        "origin",
+        "pattern",
+        "title",
+        "severity",
+        "confidence",
+        "reasoning",
+        "supporting_finding_ids"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "llm-cross-endpoint-synthesis"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "informational",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "reasoning": {
+          "type": "string"
+        },
+        "supporting_finding_ids": {
+          "type": "array",
+          "description": "finding_ids this rests on. Ids the model invented are filtered out before they get here.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "suggested_tool": {
+          "enum": [
+            "sqlmap",
+            "nuclei",
+            "ffuf",
+            "interactsh",
+            "self-evident",
+            "out-of-scope",
+            "none"
+          ]
+        },
+        "pattern": {
+          "enum": [
+            "propagation-shared-handler",
+            "missing-guard-family",
+            "chain",
+            "systemic-absence",
+            "other"
+          ],
+          "description": "Which cross-cutting shape the model claims. propagation-shared-handler is the one DAST cannot produce alone: a weakness confirmed on one route, in code that other, unscanned routes also reach."
+        },
+        "affected_routes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Route templates covered, including ones the scanner never flagged."
+        }
+      },
+      "description": "A finding produced by pass 2 from the whole scan at once. Carries no ZAP alert id \u2014 which is exactly why the SARIF export needs a second rule-id namespace, linked to the alert-derived findings it cites via result.relationships."
+    }
+  }
+}

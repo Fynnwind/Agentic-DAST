@@ -1,0 +1,56 @@
+# Does the harness work? Run this before committing a night to a real sheet.
+#
+#   uv run dast harness config/harness/smoke.yml --dry-run   # plan only, instant
+#   uv run dast harness config/harness/smoke.yml             # ~4 minutes, free
+#
+# No ZAP restart needed: every scan resets the daemon's session through the API,
+# so this row starts from an empty site tree however much the daemon has already
+# scanned.
+#
+# It exercises every part of the harness that a real sheet uses — sheet parsing,
+# the env overlay, a row that mints its own run, a row that acts on a stored one,
+# repeats, the comparison table and the variance block — while costing nothing
+# and needing no API key.
+#
+# WHY IT IS FREE. `TRIAGE_LLM_ENABLED: "false"` runs triage's deterministic control arm
+# only, and `VERIFY_INVOCATION: deterministic` does the same one stage later.
+# Both are switches exposed as configuration precisely so a sheet can reach
+# them: the free arm is the one you want when the question is "does the plumbing
+# work", not "what does the model say".
+#
+# WHY THE BUDGETS ARE TINY. Two minutes of active scan and five verification
+# dispatches prove the stages run, hand each other a run id, and record metrics.
+# They prove nothing about detection — do not read a finding count out of this
+# sheet, and do not compare its runs with anything.
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  env:
+    SHARED_AUTH_MODE: none
+    TRIAGE_LLM_ENABLED: "false"
+
+rows:
+  # A row that mints its own run: scan → triage → verify → report, with every
+  # budget turned down to the smallest thing that still exercises the stage.
+  - name: chain
+    stages: [scan, triage, verify, report]
+    env:
+      SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "2"
+      SCAN_ZAP_MAX_RULE_MINUTES: "1"
+      VERIFY_MAX_DISPATCH_ALL_RULES: "2"
+      VERIFY_MAX_DISPATCHES_TOTAL: "4"
+      VERIFY_MAX_MINUTES: "3"
+      # The FULLY-DETERMINISTIC verification configuration, and the second half
+      # of why this sheet is free: the loop's default invocation is `llm`, which
+      # consumes the key. Both axes deterministic is the keyless control arm —
+      # the right one for "does the plumbing work".
+      VERIFY_INVOCATION: deterministic
+
+  # A row that acts on a *stored* run — the shape every comparison row uses —
+  # repeated, so the variance block has something to report. `latest` resolves
+  # when the row starts, so this picks up the run the row above just made.
+  - name: retriage
+    stages: [triage]
+    run: latest
+    repeat: 2

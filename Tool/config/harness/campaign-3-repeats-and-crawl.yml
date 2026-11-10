@@ -1,0 +1,79 @@
+# CAMPAIGN · BLOCK 3 · G3 (scan repeats) + G4 (crawler only).
+# Thesis-Analyzer/RUN-PLAN.md §5 (G3, G4), §6 (block 3).
+#
+#   uv run dast harness config/harness/campaign-3-repeats-and-crawl.yml --dry-run
+#   uv run dast harness config/harness/campaign-3-repeats-and-crawl.yml
+#
+# G3 — SCAN REPEATS. The reference cell of each target (`<t>-user-blind`) scanned
+# TWO more times (repeat: 2), so with block 1's one there are three identical-
+# configuration scans per target (4 x 2 = 8 scans here). Gives alert volume as a
+# RANGE and detection as a POINT (RUN-PLAN §9 Spread; the "smaller than the
+# spread is not a difference" yardstick). Each repeat is a fresh run id; the
+# analyzer groups them with block 1's by config digest + (target, user, blind).
+# Full chain `scan triage verify report`, oracle off.
+#
+# G4 — CRAWLER ONLY. The reference cell with extraction OFF (SCAN_NOIR_ENABLED:
+# off), role `crawl`, scan ONLY, repeat: 2 (4 x 2 = 8 scans). Measures what Noir
+# seeding adds: compared by the analyzer against the three reference scans (block
+# 1 + G3) on tree size, alerts, rules, and whether each marker's sink was
+# reached. No triage (triage needs the extractor's output), so DO NOT run
+# `dast cve` on these — the analyzer computes their reach from zap-alerts +
+# seed-map + cve-markers directly (RUN-PLAN §5 G4, NEXT_SESSION §4).
+#
+# ORDER (RUN-PLAN §6): all G3 rows (grafana, wordpress, cacti, gitea), then all
+# G4 rows, same target order. The harness runs rows one at a time, so no verify
+# ever runs beside a scan. Run AFTER blocks 1-2.
+#
+# PREREQUISITES: P1 done (grafana/cacti `user` accounts seeded + login-validated);
+# P3 slugs confirmed; P7 commit still to fill.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 6.0        # RUN-PLAN §7: G3 ~1.49 USD, G4 free (scan only).
+  timeout_minutes: 240
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7 — same commit as blocks 1-2
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed, not pinned: baidu failed ~80% of deepseek-v3.2 calls 2026-10-12; served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: user      # the reference cell's level, shared by every row
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == G3 — two more scans of each reference cell (repeat: 2) ================
+  # Same name as the block-1 user-blind cell ON PURPOSE: same configuration, so
+  # the analyzer counts all three as repeats of one cell. A minting row writes no
+  # suffix, so the two repeats are distinguished by run id.
+  - {name: grafana-user-blind,   target: grafana,   stages: [scan, triage, verify, report], repeat: 2}   # P1 done (user seeded + login-validated 2026-10-12)
+  - {name: wordpress-user-blind, target: wordpress, stages: [scan, triage, verify, report], repeat: 2}
+  - {name: cacti-user-blind,     target: cacti,     stages: [scan, triage, verify, report], repeat: 2}   # P1 done (user seeded + login-validated 2026-10-12)
+  - {name: gitea-user-blind,     target: gitea,     stages: [scan, triage, verify, report], repeat: 2}
+
+  # == G4 — crawler only, extraction off, scan only (repeat: 2) =============
+  - {name: grafana-user-crawl,   target: grafana,   stages: [scan], repeat: 2, env: {SCAN_NOIR_ENABLED: "off"}}   # P1 done (user seeded + login-validated 2026-10-12)
+  - {name: wordpress-user-crawl, target: wordpress, stages: [scan], repeat: 2, env: {SCAN_NOIR_ENABLED: "off"}}
+  - {name: cacti-user-crawl,     target: cacti,     stages: [scan], repeat: 2, env: {SCAN_NOIR_ENABLED: "off"}}   # P1 done (user seeded + login-validated 2026-10-12)
+  - {name: gitea-user-crawl,     target: gitea,     stages: [scan], repeat: 2, env: {SCAN_NOIR_ENABLED: "off"}}

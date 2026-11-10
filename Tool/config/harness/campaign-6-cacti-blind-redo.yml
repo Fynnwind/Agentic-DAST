@@ -1,0 +1,61 @@
+# CAMPAIGN · BLOCK 6 · cacti-admin-blind RE-RUN (recovery).
+#
+# The campaign-6 cacti-admin-blind-3 run (run 25) died mid-scan 2026-10-16
+# 14:05 with `httpx.RemoteProtocolError: Server disconnected` — the dast-zap
+# daemon crashed under cacti scan load (dast-zap container restarted ~14:05,
+# run self-aborted in 3.6m). That left cacti-admin-blind at 5 new runs instead
+# of 6. This tops it back up with ONE fresh blind run.
+#
+# NOT the ceiling: per the investigation 2026-10-16, cacti's CVE-2022-46169 OOB
+# RCE never confirms IN-PIPELINE (documented open enhancement, not a gate; the
+# standalone Targets/cacti/env/confirm-oob.sh still CONFIRMS it end to end), so
+# re-running the 5 lost ceiling runs buys only spread bands on a 0-detection
+# block at the cost of a cacti restart between each — skipped by the author.
+#
+#   uv run dast harness config/harness/campaign-6-cacti-blind-redo.yml
+#
+# PREREQUISITES. Restart cacti first (it deadlocks under back-to-back scans;
+# `docker restart target-cacti`, DB untouched, recovers in ~0.2s) and confirm it
+# answers HTTP 200 before launching. The new run carries harness_row=
+# cacti-admin-blind, auth=admin, oracle_guided=false and the SAME config digest
+# as the campaign-6 blind rows, so the analyzer groups it with them as a repeat.
+#
+# Config is COPIED VERBATIM from campaign-6-spread-repeats.yml so the digest
+# matches — do not drift it.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 3.0        # ~$0.6 expected for one cacti blind run; headroom.
+  timeout_minutes: 240
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  - {name: cacti-admin-blind, target: cacti, stages: [scan, triage, verify, report], repeat: 1, env: {SHARED_AUTH_MODE: admin}}

@@ -1,0 +1,99 @@
+# CAMPAIGN · BLOCK 1 · G1 — the blind matrix.
+# Thesis-Analyzer/RUN-PLAN.md §5 (G1), §6 (block 1). The REPORTED corpus.
+#
+#   uv run dast harness config/harness/campaign-1-blind-matrix.yml --dry-run
+#   uv run dast harness config/harness/campaign-1-blind-matrix.yml
+#
+# WHAT THIS IS. Every target scanned blind (oracle OFF) at every session level —
+# 4 targets x {none, user, admin} = 12 cells, each a fresh `scan triage verify
+# report`. This is what the stage finds unaided, per level: the detection numbers
+# the thesis reports. The matching upper bound is block 2 (the --oracle ceiling).
+#
+# ORDER IS EXECUTION ORDER and is FIXED (targets are not restored between scans,
+# RUN-PLAN §2/§6): grafana, wordpress, cacti, gitea, and within a target none,
+# then user, then admin — the most intrusive session last. Do not reorder.
+#
+# PREREQUISITES (RUN-PLAN §3 — the block-1 start gate):
+#   * P1 — DONE (2026-10-12). Grafana (`dastviewer`) and Cacti (`dastuser`) now
+#     have a seeded `user` account (their `env/seed.sh`), and all four
+#     grafana/cacti user+admin logins were validated through the scan's auth flow.
+#     Gitea and WordPress already had both roles.
+#   * P3 — provider pins are set in defaults.env below. CONFIRM THE SLUGS against
+#     OpenRouter's provider list before the first run (RUN-PLAN decision 1): a
+#     hard pin routes with fallbacks OFF, so a wrong slug fails the row.
+#   * P7 — write the campaign commit hash on the COMMIT line below before running.
+#   * config/scanner/secrets.env holds the key; the four targets are up; the
+#     nuclei template volume is populated. `--dry-run` clean.
+#
+# AFTER IT LANDS: record the 12 minted run ids (`dast run-index`, or this sheet's
+# comparison.md). Block 2 is run next; then `dast cve <blind-id> <ceiling-id>`
+# per (target, auth) writes each cell's cve-detection.json (two-run form — one
+# blind, one --oracle — so no live counterpart is spawned). Blocks 4-5 need the
+# four <t>-user-blind SCAN ids from this sheet.
+
+defaults:
+  base_env: config/scanner/.env
+  # Mistake-bound, not a target: RUN-PLAN §7 expects ~2.24 USD for G1. ~3.5x
+  # headroom; checked between rows, so a real cell is never cut mid-run.
+  max_cost_usd: 8.0
+  # Cacti is the worst case: ~60 min scan + ~76 min triage + verify. The harness
+  # backstop is 240; sized to it so no Cacti row is killed by the timeout.
+  timeout_minutes: 240
+  env:
+    # --- COMMIT (P7): fill before the first run -----------------------------
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # one coherent corpus, no pipeline change (P7)
+    # --- the settled triage/verify config (the promoted-corpus pins) --------
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    # --- models + PINNED providers (P3 / RUN-PLAN decision 1) ---------------
+    # CONFIRM these provider slugs against OpenRouter before the first run.
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed, not pinned: baidu failed ~80% of deepseek-v3.2 calls 2026-10-12; served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    # --- verification at the settled hybrid ---------------------------------
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    # --- pinned prompt versions + oracle off + per-run mistake-bound --------
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    # Headroom over the pilot's per-run cost: the campaign scans 3 levels (more
+    # surface -> pricier triage) than the pilot's one. Still bounds a runaway.
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == grafana ===============================================================
+  - {name: grafana-none-blind,  target: grafana, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: none}}
+  - {name: grafana-user-blind,  target: grafana, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: user}}
+  - {name: grafana-admin-blind, target: grafana, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: admin}}
+
+  # == wordpress =============================================================
+  - {name: wordpress-none-blind,  target: wordpress, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: none}}
+  - {name: wordpress-user-blind,  target: wordpress, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: user}}
+  - {name: wordpress-admin-blind, target: wordpress, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: admin}}
+
+  # == cacti =================================================================
+  - {name: cacti-none-blind,  target: cacti, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: none}}
+  - {name: cacti-user-blind,  target: cacti, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: user}}
+  - {name: cacti-admin-blind, target: cacti, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: admin}}
+
+  # == gitea =================================================================
+  - {name: gitea-none-blind,  target: gitea, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: none}}
+  - {name: gitea-user-blind,  target: gitea, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: user}}
+  - {name: gitea-admin-blind, target: gitea, stages: [scan, triage, verify, report], env: {SHARED_AUTH_MODE: admin}}

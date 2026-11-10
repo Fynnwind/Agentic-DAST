@@ -1,0 +1,494 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thesis.local/schemas/verification-result.schema.json",
+  "title": "DAST verification artifact",
+  "description": "Contract for data/verification-<ts>.json: the verification outcome per finding, produced by one bounded verification loop per finding, dispatched to the stdio MCP verification wrappers within a budget. Every record carries BOTH readings of its final round's raw tool output \u2014 the wrapper's fixed-rule classification and the model's \u2014 plus the reported verdict resolve_verdict() derived from them and whether they agreed. Phase 4 SARIF export joins this to the correlation artifact of the same run.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "generated_at",
+    "source_artifact",
+    "budget",
+    "summary",
+    "verifications",
+    "correlated_verifications"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "The run this artifact belongs to and the directory holding it: `<timestamp>-<target>-<config>` (run_paths.make_run_id), where the last field is a digest of the scan configuration. The join key to every other artifact of the run \u2014 the scan, the other verdicts, the report, and the SAST/SCA baselines when they were run into the same folder. Both trailing fields are optional: ids recorded before each existed still validate.",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z(-[A-Za-z0-9_.]+)?(-[0-9a-f]{6})?$"
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "The scan's UTC instant, unchanged from the id's timestamp half. Kept beside `run_id` so an artifact still states when the run happened without parsing its id."
+    },
+    "source_artifact": {
+      "type": "string",
+      "description": "Filename of the correlation-<ts>.json this run verified."
+    },
+    "vocabulary_version": {
+      "type": "integer"
+    },
+    "rescan_table_version": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "rescan_table.RESCAN_TABLE_VERSION as it stood when these dispatches were routed, taken from the CORRELATION artifact rather than from the live table \u2014 `selected_tool` reads the tool the table wrote at correlate time, so editing a rule's routing changes nothing about a stored corpus until `correlate` is re-run over it, and the live version would label an artifact with a table that did not route it. Null when the corpus was correlated before the version was recorded; absent on artifacts written before the field existed."
+    },
+    "budget": {
+      "$ref": "#/definitions/budget"
+    },
+    "tools": {
+      "type": "object",
+      "description": "Provenance: the pinned image each dispatchable tool ran in.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "summary": {
+      "$ref": "#/definitions/summary"
+    },
+    "verifications": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/verification"
+      }
+    },
+    "correlated_verifications": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/verification"
+      }
+    },
+    "sibling_verifications": {
+      "type": "array",
+      "description": "The dispatch half of a cross-endpoint propagation claim: one probe per route the claim PREDICTED shares the weakness and the scanner never flagged. Deliberately its own array. These records carry no ZAP alert and no plugin-keyed triage, their URLs were BUILT from a Noir route template rather than observed, and their two verdicts do not weigh the same \u2014 a confirmation is a real vulnerability at a route the crawl never reached (and becomes a first-class finding in the report, under its own `s-` id), while a refutation may only mean the constructed URL is not a page the application serves. Folding them into `verifications` would put both mistakes into one column.",
+      "items": {
+        "$ref": "#/definitions/sibling"
+      }
+    },
+    "oob_enabled": {
+      "type": "boolean",
+      "description": "Whether out-of-band (OAST) nuclei templates were armed against the self-hosted interactsh sink for this run. Recorded because it changes what the run *could* have found: two runs that differ here are not comparable on SSRF/blind-injection classes, which leave no trace in a response. Off by default \u2014 measured on Gitea it changed no verdict and tripled the stage's wall time."
+    },
+    "config": {
+      "type": "object",
+      "description": "The configuration this run WAS, on two independent axes: `tool_choice` (table|llm \u2014 WHICH tool settles a finding) and `invocation` (llm|deterministic \u2014 HOW it is called and when to stop asking), plus `max_rounds`. Both deterministic is the fully-deterministic control, which calls no model. Recorded at the top of the artifact as well as on each record, because the comparison this stage supports is BETWEEN runs and a reader joining two artifacts should not have to open a record to learn which configuration produced which.",
+      "properties": {
+        "tool_choice": {
+          "type": "string",
+          "enum": [
+            "table",
+            "llm"
+          ]
+        },
+        "invocation": {
+          "type": "string",
+          "enum": [
+            "llm",
+            "deterministic"
+          ]
+        },
+        "max_rounds": {
+          "type": "integer"
+        }
+      }
+    },
+    "loop": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "The loop's model, prompt version, params and usage \u2014 enough to rerun it. Null in the fully-deterministic configuration, which calls no model."
+    }
+  },
+  "definitions": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "confirmed",
+        "refuted",
+        "inconclusive",
+        "not-attempted"
+      ],
+      "description": "The four distinct states. A tool that ran and found nothing is 'refuted'; a tool killed by a timeout is 'inconclusive'; a finding a budget dropped before dispatch is 'not-attempted'. These must never be conflated."
+    },
+    "budget": {
+      "type": "object",
+      "description": "Every ceiling the dispatch stage ran under. -1 on any of them means that ceiling was not enforced; 0 keeps its arithmetic meaning and refuses every dispatch it governs. Artifacts written before 2026-09-08 carry the older `max_per_rule`/`max_dispatches` names for the same two numbers, without the per-rule layer.",
+      "required": [
+        "tool_timeout_seconds",
+        "max_minutes"
+      ],
+      "properties": {
+        "tool_timeout_seconds": {
+          "type": "integer",
+          "description": "Hard timeout for ONE tool invocation. Unaffected by how many findings triage handed over: the count caps below drop findings, they never shorten the ones they keep."
+        },
+        "max_dispatch_all_rules": {
+          "type": "integer",
+          "description": "Dispatches allowed for any ZAP plugin id `max_dispatch_rule` does not name."
+        },
+        "max_dispatch_rule": {
+          "type": "object",
+          "description": "Per-plugin-id dispatch caps, overriding `max_dispatch_all_rules` for the rules named. Empty when the run used one blanket number for every rule.",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "max_dispatches_total": {
+          "type": "integer",
+          "description": "Ceiling on tool invocations for the whole run. Cross-endpoint, not per endpoint."
+        },
+        "max_minutes": {
+          "type": "integer",
+          "description": "Wall-clock ceiling for the dispatch stage."
+        },
+        "max_per_rule": {
+          "type": "integer",
+          "description": "Superseded by `max_dispatch_all_rules` on 2026-09-08. Present on older artifacts only; never written now."
+        },
+        "max_dispatches": {
+          "type": "integer",
+          "description": "Superseded by `max_dispatches_total` on 2026-09-08. Present on older artifacts only; never written now."
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "selected",
+        "dispatched",
+        "by_outcome",
+        "by_tool"
+      ],
+      "properties": {
+        "selected": {
+          "type": "integer"
+        },
+        "correlated_selected": {
+          "type": "integer"
+        },
+        "dispatched": {
+          "type": "integer"
+        },
+        "by_outcome": {
+          "type": "object"
+        },
+        "by_tool": {
+          "type": "object"
+        },
+        "dispatches_by_rule": {
+          "type": "object"
+        },
+        "tool_seconds": {
+          "type": "number"
+        },
+        "by_wrapper_verdict": {
+          "type": "object",
+          "description": "The same records counted by the DETERMINISTIC wrapper's reading, beside `by_outcome`'s reported one. Kept so 'the model verifies well' stays a falsifiable claim: without both counts there is no number to falsify it against."
+        },
+        "rounds_used": {
+          "type": "object",
+          "description": "How many rounds each finding took, as a histogram keyed by round count. A loop that refuted at round 1 and one that reached the same refutation only after correcting its invocation are different results."
+        },
+        "loop": {
+          "type": "object",
+          "description": "The classification-audit rate: `agree` / `flagged` / `flagged_rate` over every settled record, plus the config and the round total. `flagged` counts the findings where the wrapper's fixed rules and the model read the SAME tool output differently \u2014 obtained free, on the model's own tool calls."
+        }
+      }
+    },
+    "sibling": {
+      "type": "object",
+      "required": [
+        "finding_id",
+        "route",
+        "outcome"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "finding_id": {
+          "type": "string",
+          "description": "Its own `s-<digest>` namespace, beside `f-` (per-endpoint) and `c-` (synthesis claim), because it is a third thing: a concrete vulnerability at one route that no ZAP alert underlies. Derived from the claim id and the route, so two runs confirming the same propagation agree on it."
+        },
+        "claim_id": {
+          "type": "string",
+          "description": "The `c-` synthesis claim that predicted this route."
+        },
+        "route": {
+          "type": "string",
+          "description": "The Noir route template (`GET /{username}/{reponame}/commits/tag/*`) this probe was built from."
+        },
+        "url_source": {
+          "type": "string",
+          "description": "How the probe URL was derived. `route-template+anchor-vars` means the anchor finding's own observed URL supplied the placeholder values, which is the difference between probing a real page and probing a 404; `route-template` alone means the target's generic defaults were used."
+        },
+        "route_status": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "What a plain GET at the CLEAN constructed URL answered, before any payload was sent. This is what tells a reader whether a refutation is about the application or about a URL that does not exist: a 404/410 route is never probed at all (`outcome: not-attempted`, `not_attempted_reason: route-not-found`). `null` means the pre-check itself could not be made \u2014 not the same as reachable, and not the same as absent."
+        },
+        "found_by": {
+          "type": "object",
+          "description": "Provenance: which layer reached this route, by what mechanism, and how its verdict must be read. Present so the detection-rate accounting can separate what the LLM layer found from what ZAP's crawl found, without the finding being filed as suspect."
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/outcome"
+            },
+            {
+              "enum": [
+                "sibling-unreachable",
+                "sibling-not-probeable"
+              ]
+            }
+          ],
+          "description": "The four shared outcomes, plus two only this population can produce, and they are NOT the same. `sibling-unreachable` means the pre-check asked and the route the claim predicted is NOT SERVED (404/410) \u2014 a result about the CLAIM. `sibling-not-probeable` means the route IS served but answered a redirect or a server error, so a probe would follow it and judge some other page \u2014 a result about the PROBE, which says nothing about the claim at all. Neither is `not-attempted`: that has always meant *unexamined* (a budget ran out, no tool was routed), and folding any of the three together would bury one kind of fact inside a column that reads as another."
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "finding_id",
+        "outcome"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "finding_id": {
+          "type": "string"
+        },
+        "tool": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "$ref": "#/definitions/outcome"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "param": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seconds": {
+          "type": "number"
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "url_source": {
+          "type": "string",
+          "description": "How the probed URL was derived from the alert: `as-recorded` (ZAP's example URL used unchanged), `query-value-reset` (the flagged query parameter's payload value replaced with a benign one), `path-payload-stripped` (a path segment carrying the attack payload put back to its pre-attack value, whether the payload was appended to it or substituted for it), each optionally `+injection-marker` when a path segment was marked as sqlmap's custom injection point. Two further values mean *no probe was made*: `no-example-url` (the alert records no URL to aim at) and `path-payload-unrecoverable` (the payload is in a path segment and the alert does not say what that segment held before it, so any probe would test the payload rather than the endpoint) \u2014 both pair with a `not-attempted` outcome. ZAP's example URLs carry the attack payload, so a probe reusing one measured the previous tool's payload rather than the endpoint; recording the derivation keeps that auditable per dispatch."
+        },
+        "tool_warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Lines in which the tool qualified its own result, quoted verbatim, recorded whether or not they changed the verdict. sqlmap warning that page content is unstable or that reflective values are being filtered means its comparison basis is degraded, and a 'refutation' resting on that is downgraded to inconclusive \u2014 a refutation that stands despite such a line and one that was never in doubt must not look alike."
+        },
+        "matched_templates": {
+          "type": "array",
+          "description": "What the confirming tool matched: template id, its CWE ids and its tags. Reported by the wrapper so the driver can cross-check the class against the flagged rule's own CWE.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "template_id": {
+                "type": "string"
+              },
+              "cwe": {
+                "type": "array",
+                "items": {
+                  "type": ["string", "integer"]
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "classification": {
+          "type": "object",
+          "description": "Only on a `confirmed` record: whether the confirming tool's match belongs to the class the flagged ZAP rule reported. 'A tool reproduced something here' and 'a tool reproduced this vulnerability' are different claims; this says which one the confirmation supports. It never changes the outcome \u2014 the parameter is injectable either way.",
+          "properties": {
+            "class": {
+              "type": "string",
+              "enum": [
+                "match",
+                "mismatch",
+                "unspecific",
+                "unknown"
+              ],
+              "description": "match: same CWE family. mismatch: different families \u2014 the parameter is reachable but this is not a confirmation of the reported class. unspecific: the ZAP rule's CWE is a catch-all (rule 10031 carries CWE-20), so there is no class to agree on. unknown: the matched template carries no CWE or recognised tag."
+            },
+            "detail": {
+              "type": "string"
+            },
+            "alert_family": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tool_families": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "reported_verdict": {
+          "$ref": "#/definitions/outcome",
+          "description": "What this layer concluded, from resolve_verdict(wrapper_verdict, llm_verdict). Mirrored into `outcome` under its long-standing name so every downstream reader keeps working against one field."
+        },
+        "wrapper_verdict": {
+          "$ref": "#/definitions/outcome",
+          "description": "The deterministic wrapper's fixed-rule reading of the FINAL round's raw output \u2014 the same round the model concluded from. It rides on the model's own tool call, so it costs nothing and audits exactly one thing: the categorisation, since the model chose the invocation. The independent control over BOTH axes is a separate run at tool_choice=table/invocation=deterministic, not this field."
+        },
+        "llm_verdict": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "confirmed",
+            "refuted",
+            "inconclusive",
+            null
+          ],
+          "description": "The model's own category. Null in a fully-deterministic run, and null when the model never answered \u2014 in which case the wrapper's reading stands alone, which is honest rather than a loss."
+        },
+        "agreement": {
+          "type": "string",
+          "enum": [
+            "agree",
+            "flagged"
+          ],
+          "description": "Whether the wrapper and the model read the final round's output the same way. `flagged` is not an error: it is the measurement, and its rate across a run is the classification-audit number."
+        },
+        "config": {
+          "type": "object",
+          "description": "The two axes this record was produced under."
+        },
+        "rounds_used": {
+          "type": "integer"
+        },
+        "stopped_because": {
+          "type": "string",
+          "description": "Why the loop ended: the model concluded at round N, the round cap bit, the model stopped answering, or no probe was derivable at all. 'We did not check' and 'we checked and it was clean' must never look alike, and neither must the several distinct reasons for the first."
+        },
+        "rounds": {
+          "type": "array",
+          "description": "The loop's trace, one entry per round, in order.",
+          "items": {
+            "$ref": "#/definitions/round"
+          }
+        }
+      }
+    },
+    "round": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "One round of a verification loop: what the model asked for, what it committed to observing beforehand, and what came back.",
+      "required": [
+        "index",
+        "wrapper_outcome"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer"
+        },
+        "tool": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "arguments": {
+          "type": "object"
+        },
+        "declared_signal": {
+          "type": "object",
+          "description": "The observable the model committed to BEFORE this round's tool ran: `expect`/`reject` substrings and `require_tool_confirmed`. Kept even though the model now makes the final call \u2014 a stated, mechanically checkable prediction is what makes a round falsifiable rather than a narration of whatever the output turned out to be."
+        },
+        "signal_check": {
+          "type": "object",
+          "description": "Whether that prediction held. `code` is authoritative: observed / absent / not-declared / not-checkable. `observed` is true/false, and null for BOTH null cases \u2014 the model declared nothing, or nothing could be tested against what it declared (the probe never ran, the tool reported no observation, or every string it named is also in the invocation the executor sent). Those two mean opposite things about the model, which is why `code` exists."
+        },
+        "wrapper_outcome": {
+          "$ref": "#/definitions/outcome",
+          "description": "The wrapper's fixed-rule reading of THIS round's output. Recorded per round, not only for the final one, so the trajectory of a loop is visible."
+        },
+        "tool_ran": {
+          "type": "boolean",
+          "description": "Whether this invocation validly put the question to the target. False for a kill at the timeout, nuclei with no templates, ffuf whose requests never landed, sqlmap on a comparison it had already disowned. The integrity floor: a tool that did not run cannot produce a refutation, and the model cannot rescue it."
+        },
+        "tool_result": {
+          "type": "object",
+          "description": "The wrapper's verdict in full: outcome, its own words, the command, the exit code, warnings and the stdout excerpt. Handed back to the model verbatim rather than summarised."
+        },
+        "model_note": {
+          "type": "string",
+          "description": "What the model made of the previous round and what this one changes."
+        },
+        "model_category": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "violations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "What the model asked for that the executor would not give it \u2014 an argument outside the allowed set, a clamped sqlmap breadth, a tool overridden by the deterministic lookup. Recorded so a proposal and what actually ran never look identical."
+        }
+      }
+    }
+  }
+}

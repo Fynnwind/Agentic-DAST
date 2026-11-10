@@ -1,0 +1,35 @@
+# The PERSISTENT stack: every system under test. Left running across DAST jobs,
+# and kept a separate stack from the tool's ephemeral scan job on purpose —
+# independent lifecycles are the core of the thesis's CI/CD-compatibility
+# argument (the systems under test outlive every run; the scanner is created,
+# used and destroyed per run).
+#
+# Lifecycle:  docker compose -f Targets/persistent.yml up -d
+# Requires the shared network to exist first:
+#   docker network create dast-net
+#
+# THIS FILE HOLDS NO TARGET OF ITS OWN. Each target contributes its own service
+# file from its own directory (Targets/<name>/env/compose.yml) and is pulled in
+# by the `include:` below — so adding a target is one new directory plus one line
+# here, and nothing about an existing target has to be edited.
+#
+# The OUT-OF-BAND infrastructure (interactsh + the split-horizon dns-resolver) is
+# NOT here — it is TOOL verification infra and lives in `Tool/docker/oob.yml`. A
+# target only points at the resolver by IP (`dns: 172.19.0.252`, Cacti alone), so
+# an `--oob` run brings that stack up separately.
+
+# The project name is explicit, and that is not cosmetic. Compose derives it from
+# the compose file's directory, so a bare name would risk one stack's `down`
+# removing another's containers (`--remove-orphans` doing it silently). Naming
+# each stack keeps the lifecycles independent of where their files live.
+name: dast-persistent
+
+include:
+  - gitea/env/compose.yml
+  - wordpress/env/compose.yml
+  - grafana/env/compose.yml
+  - cacti/env/compose.yml
+
+networks:
+  dast-net:
+    external: true

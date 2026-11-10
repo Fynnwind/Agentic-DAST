@@ -1,0 +1,108 @@
+# The default sheet: everything worth measuring, over one corpus, in one night.
+#
+#   uv run dast harness --smoke        # 4 minutes, free — check the plumbing first
+#   uv run dast harness --dry-run      # this sheet's plan, instant
+#   uv run dast harness                # this sheet; ~3-4 h, roughly $0.5
+#
+# No ZAP restart needed — every scan resets the daemon's session through the API
+# — but the target should be seeded and quiet:
+#   ./targets/gitea/env/seed-users.sh && ./targets/gitea/env/seed-repo.sh
+#
+# WHAT IT IS FOR. Row 1 pays for the scan; every other row re-triages that same
+# stored corpus. So each comparison below is between *one variable* and nothing
+# else, and the whole night costs one active scan plus a dozen triages. Read the
+# result in data/harness/<ts>-overnight/comparison.md.
+#
+# THE THREE QUESTIONS, in the order they matter:
+#
+#   1. Does cross-endpoint context make pass 1 self-consistent?  (ctx-*)
+#      Read self_contradictions / self_comparisons. The measured baseline is
+#      0-1 contradictions per run out of 12-85 comparisons, so the effect is
+#      small and each level repeats three times — a single run per level cannot
+#      tell the change from the noise.
+#
+#   2. Which model belongs in which arm?                          (model-*)
+#      Pass 1 is many small calls where unit price and latency dominate; pass 2
+#      is exactly one call where a long chain of reasoning is the whole point.
+#      They are separately configurable, so the two questions are separate rows.
+#      `synthesis-big` is the one never yet tested: the claim that an expensive
+#      model is affordable in pass 2 has been argued, not measured.
+#
+#   3. How much does one configuration vary between identical runs?
+#      `ctx-full` IS the variance measurement: it is the default configuration
+#      repeated three times, which is exactly what a variance row is. There is
+#      deliberately no separate `variance` row — an earlier draft had one, and it
+#      was the same configuration as `ctx-full`, so seven of fifteen executions
+#      were spending money on one setting. Two identical triages once gave `both`
+#      11 and 16; until this row says how wide that is, every other difference
+#      below is unreadable.
+#
+# HOW TO READ IT, in one rule: **a difference between two rows smaller than the
+# spread of `ctx-full` is not a difference.** The report prints that spread as a
+# table for exactly this comparison.
+#
+# HOW TO EXTEND IT. Add a row, change one variable, keep everything else at the
+# default. Prompt versions are the obvious next axis
+# (`TRIAGE_PROMPT_VERSION: "4"` against `"3"`) once there is a v4 — see
+# prompts/README.md. Resist changing two things in one row: the sheet is cheap
+# enough to run again, and a row that moves two variables answers neither.
+#
+# WHAT IT DELIBERATELY DOES NOT DO. No second scan: two scans differ by ZAP's
+# own active-scanner variance as well as by whatever the row changed, and this
+# sheet exists to isolate one variable at a time. Auth-mode comparison needs a
+# restored target snapshot between runs, which no sheet can do — that is
+# ./targets/gitea/env/compare-auth-modes.sh.
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  env:
+    SHARED_AUTH_MODE: none
+    # 60, not 20. The recorded runs that finished *naturally* needed 33-35
+    # minutes; every 10-minute run stopped exactly at its cap and produced a
+    # third of the active-scanner alerts. A truncated corpus would make every
+    # row below a comparison over a lower bound — the one thing this sheet
+    # cannot afford, since the scan is paid for once and every row inherits it.
+    SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "60"
+    SCAN_ZAP_MAX_RULE_MINUTES: "5"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+
+rows:
+  # ---- the corpus, and the reference run of the whole chain ----------------
+  - name: baseline
+    stages: [scan, triage, verify, report, analyze]
+    env:
+      TRIAGE_PEER_CONTEXT: full
+
+  # ---- 1. does context make pass 1 self-consistent? -----------------------
+  - name: ctx-none
+    stages: [triage]
+    repeat: 3
+    env: { TRIAGE_PEER_CONTEXT: none }
+
+  - name: ctx-siblings
+    stages: [triage]
+    repeat: 3
+    env: { TRIAGE_PEER_CONTEXT: peers }
+
+  # The default configuration, three times — so this row is *both* the third
+  # context level and the variance yardstick every other row is read against.
+  - name: ctx-full
+    stages: [triage]
+    repeat: 3
+    env: { TRIAGE_PEER_CONTEXT: full }
+
+  # ---- 2. which model belongs in which arm? -------------------------------
+  # Pass 1 changed, pass 2 held fixed — and the reverse — so a difference is
+  # attributable to one arm rather than to "the model".
+  - name: triage-big
+    stages: [triage, verify, report]
+    env:
+      TRIAGE_SCREENING_MODEL: qwen/qwen3-235b-a22b-2507
+      TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+
+  - name: synthesis-big
+    stages: [triage, report]
+    env:
+      TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+      TRIAGE_SYNTHESIS_MODEL: qwen/qwen3-235b-a22b-2507

@@ -1,0 +1,42 @@
+%% One run end to end, including the out-of-band (OOB) confirmation handshake.
+%% The OOB callback returns on the target's schedule, not the scanner's.
+sequenceDiagram
+    autonumber
+    actor U as operator (dast)
+    participant N as Noir
+    participant Z as ZAP
+    participant T as target
+    participant TR as triage arms
+    participant V as verify loop
+    participant NU as nuclei
+    participant DNS as split-horizon resolver
+    participant IS as interactsh sink
+    participant R as report
+
+    U->>N: scan: extract endpoints from source
+    N-->>Z: seed site tree (+ --ai-context)
+    Z->>T: spider + active scan
+    T-->>Z: responses → alerts
+    Z-->>U: alerts + HTTP-exchange sidecar (the corpus)
+
+    U->>TR: triage (reads corpus, never re-scans)
+    TR-->>U: per-finding verdicts + synthesis claims
+
+    U->>V: verify (told the handler source, NOT triage's conclusion)
+    V->>NU: dispatch probe (in-band tools: nuclei/sqlmap/ffuf)
+    NU->>T: probe
+    T-->>NU: response → wrapper + model read it
+    NU-->>V: confirmed / refuted / inconclusive
+
+    Note over V,IS: OOB path — a blind class emits no in-band signal
+    V->>NU: OOB probe (--dast, payload carries a callback host)
+    NU->>T: injected payload
+    T->>DNS: resolve TOKEN.interactsh.local
+    DNS-->>T: answer inside dast-net
+    T->>IS: DNS/HTTP callback (out of band)
+    NU->>IS: poll for interactions
+    IS-->>NU: interaction landed → confirmed
+    NU-->>V: OOB confirmed
+
+    U->>R: report (templates over artifacts)
+    R-->>U: SARIF (zap-mirror + dast-synthesis) + Markdown

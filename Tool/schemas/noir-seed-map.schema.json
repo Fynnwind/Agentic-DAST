@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "noir-seed-map.schema.json",
+  "title": "Noir seed map (scan-noir-seed-map.json)",
+  "description": "The exact template -> concrete-URL map ZAP is seeded from, and the join's zero-inference tier. Written by noir_runner.build_seed_map_artifact.",
+  "type": "object",
+  "required": ["schema_version", "entries"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_at": {"type": "string"},
+    "base_url": {"type": "string"},
+    "path_vars": {"type": "object"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["method", "path", "endpoint_keys"],
+        "properties": {
+          "method": {"type": "string"},
+          "path": {"type": "string"},
+          "url": {"type": "string"},
+          "endpoint_keys": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

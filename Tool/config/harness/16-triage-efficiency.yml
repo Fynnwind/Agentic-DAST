@@ -1,0 +1,55 @@
+# §R3.4 — the two triage-efficiency measurements, on the promoted corpus.
+#
+#   uv run dast harness config/harness/16-triage-efficiency.yml --dry-run
+#   uv run dast harness config/harness/16-triage-efficiency.yml
+#
+# Both groups RE-TRIAGE a stored baseline SCAN (via `run:`; triage reads the scan
+# off disk — no re-scan) with SYNTHESIS OFF, so only pass 1 varies and the
+# numbers isolate it. These are plumbing measurements — call count, re-ask rate,
+# cost, latency — not LLM judgements, so a single sample per config is a fair
+# order-of-magnitude read (latency still carries run-to-run variance; the point
+# is the shape, not the third digit).
+#
+# GROUP 1 — the missing-verdicts re-ask (§R3.4). deepseek's provider ignores the
+# strict verdicts `minItems`/`maxItems`, so a call asking about N alerts can come
+# back short and the endpoint re-asks for the rest (retried_calls). A smaller
+# batch asks about fewer per call, so it can re-ask less — but issues more calls.
+# Sweeps TRIAGE_MAX_ALERTS_PER_CALL over the gitea baseline; read
+# `retried_calls / calls` and cost per row to find where the two costs cross.
+#
+# GROUP 2 — large-target default context (§R3.4). Cacti's pass-1 is ~3x a small
+# target's per-call latency because its prompts are large (peer context scaling
+# with the 342-endpoint tree). Sweeps TRIAGE_PEER_CONTEXT over the cacti baseline;
+# read stage wall time and per-call latency per row. Context level is a *studied*
+# axis, so a lighter default for a large tree is a measurement decision, not a
+# silent change — this is that measurement.
+#
+# HOW TO READ: `dast run-index` for per-row time/cost, and each row's
+# run-metrics-triage-<row>.json for `calls`, `retried_calls`, latency percentiles.
+# Variants write suffixed artifacts into the stored run dirs; the promoted
+# triage-*.json are untouched.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 4.0
+  timeout_minutes: 150
+  env:
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_LLM_ENABLED: "on"
+    # Off so only pass 1 is exercised — the axis both groups vary lives there,
+    # and a 5-sample whole-corpus synthesis would dominate cost and hide it.
+    TRIAGE_SYNTHESIS_ENABLED: "off"
+    SHARED_ORACLE: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+
+rows:
+  # -- GROUP 1: missing-verdicts re-ask, over the gitea baseline scan ---------
+  - {name: maxalerts-1,  run: 20260923T165613Z-gitea-2865f0, stages: [triage], env: {TRIAGE_MAX_ALERTS_PER_CALL: "1"}}
+  - {name: maxalerts-3,  run: 20260923T165613Z-gitea-2865f0, stages: [triage], env: {TRIAGE_MAX_ALERTS_PER_CALL: "3"}}
+  - {name: maxalerts-6,  run: 20260923T165613Z-gitea-2865f0, stages: [triage], env: {TRIAGE_MAX_ALERTS_PER_CALL: "6"}}
+  - {name: maxalerts-12, run: 20260923T165613Z-gitea-2865f0, stages: [triage], env: {TRIAGE_MAX_ALERTS_PER_CALL: "12"}}
+
+  # -- GROUP 2: large-target context level, over the cacti baseline scan ------
+  - {name: ctx-full,  run: 20260923T162308Z-cacti-a88bcd, stages: [triage], env: {TRIAGE_PEER_CONTEXT: full}}
+  - {name: ctx-peers, run: 20260923T162308Z-cacti-a88bcd, stages: [triage], env: {TRIAGE_PEER_CONTEXT: peers}}
+  - {name: ctx-none,  run: 20260923T162308Z-cacti-a88bcd, stages: [triage], env: {TRIAGE_PEER_CONTEXT: none}}

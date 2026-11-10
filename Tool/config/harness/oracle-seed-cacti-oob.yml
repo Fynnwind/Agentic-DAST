@@ -1,0 +1,69 @@
+# OPTION C — oracle-seeded verify dispatch on the frozen Cacti AUTHENTICATED ceilings.
+#
+#   uv run dast harness config/harness/oracle-seed-cacti-oob.yml
+#
+# WHAT THIS IS. A LABELED ADDITIONAL verify configuration (the G6 `stages:[verify]`
+# pattern), re-verifying the two frozen Cacti authenticated ceiling scans with the
+# oracle-seeded dispatch turned ON (VERIFY_ORACLE_SEED_DISPATCH, branch 8a99f0e).
+# It exists for one measured miss: after the -03d clog fix enlarged Cacti's
+# signed-in crawl to ~785 URLs, ZAP's active command-injection scanner exhausts the
+# frozen active-scan cap before it reaches remote_agent.php's poller_id, so rule
+# 90037 fires 0x and CVE-2022-46169 is missed at the authenticated ceiling (frozen
+# reading: user 0/32 confirmed, admin 0/18 confirmed; the `none` ceiling still
+# confirms it in-band, 1 dispatch). The oracle-seeded dispatch synthesises a probe
+# FROM THE MARKER (remote_agent.php sink, 90037->nuclei, cmdi tag, marker auth=none
+# so the cookie is dropped, X-Forwarded-For kept) and confirms it out of band.
+#
+# It is a CEILING reading, never a blind detection: gated on --oracle + the flag,
+# resolved through verification.resolve_verdict (class gate included), recorded in
+# its own `oracle_seeded_verifications` array with origin "oracle-seeded".
+#
+# ============================ TARGET-STATE / OOB ============================
+# Verify PROBES THE LIVE TARGET. Before this sheet: reset Cacti once to its clean
+# seeded snapshot and bring up the OOB stack; do NOT scan Cacti while it runs.
+#     ./Targets/cacti/env/reset.sh
+#     docker compose -f docker/oob.yml up -d      # interactsh + split-horizon DNS
+# The OOB settings below are pinned to the values the frozen `none` ceiling
+# confirmed under (interactsh.local via the split-horizon resolver 172.19.0.252),
+# NOT this checkout's .env (which points straight at the container with OOB off).
+# ============================================================================
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 45
+  env:
+    # freeze commit: rerun-2026-11-03f (bba768d) + oracle-seed-verify (8a99f0e)
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""
+    VERIFY_INVOCATION: llm
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "20"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "150"
+    VERIFY_PROMPT_VERSION: "2"
+    VERIFY_PROMPT_CACHE: "on"
+    VERIFY_RETRIEVAL: push
+    VERIFY_NUCLEI_TEMPLATES_VOLUME: nuclei-home
+    # --- the frozen OOB path (matches the confirming `none` ceiling) ---
+    VERIFY_OOB: "on"
+    VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+    VERIFY_INTERACTSH_DNS: 172.19.0.252
+    VERIFY_INTERACTSH_COOLDOWN_SECONDS: "10"
+    # --- option C: oracle on + the oracle-seeded dispatch ---
+    SHARED_ORACLE: "on"
+    VERIFY_ORACLE_SEED_DISPATCH: "on"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+    # Ran 2026-11-07 from a worktree whose Targets/ had no checked-out source, with
+    # SHARED_TARGETS_DIR set to the main checkout's Targets/ so cacti's src,
+    # oracle.md and cve-markers.yml were the frozen ones the ceiling scans used.
+    # From the main checkout the default ../Targets is that same directory; set
+    # SHARED_TARGETS_DIR only when re-running from a worktree.
+
+rows:
+  # admin first (the canonical authenticated ceiling), then user; repeat 2 each.
+  - {name: cacti-admin-ceiling-oseed, run: 20261105T062343Z-cacti-018bf4, stages: [verify], repeat: 2, env: {SHARED_AUTH_MODE: admin}}
+  - {name: cacti-user-ceiling-oseed,  run: 20261105T051125Z-cacti-f1acf0, stages: [verify], repeat: 2, env: {SHARED_AUTH_MODE: user}}

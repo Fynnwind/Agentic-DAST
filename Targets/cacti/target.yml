@@ -1,0 +1,196 @@
+# The Cacti 1.2.22 target — every Cacti-specific value the pipeline needs. The
+# FOURTH target, chosen for the CONFIRMATION axis: see docs/TARGETS.md and
+# cve-markers.yml for why (its flagship CVE is a black-box-confirmable, out-of-
+# band command injection, the class the first three targets could not exercise).
+#
+# A new target is a sibling DIRECTORY like this one — target.yml, src/, env/ —
+# plus one `include:` line in stacks/persistent.yml; no Python is edited. What
+# Cacti forced was ONE small generalisation, not a branch: its login form renders
+# the CSRF field as name='__csrf_magic' (single-quoted), so auth.py's token
+# regex was widened to accept either quote style — a fix that helps any such
+# template, honoured rather than special-cased on the target name.
+#
+# The seeded credentials match env/seed.sh and are TEST-ONLY for the loopback-
+# bound, deliberately-vulnerable local target — fixed and public on purpose so
+# every run authenticates identically.
+
+name: cacti
+
+# URL ZAP and the verification tools reach the target at — the container name on
+# dast-net, not localhost (they run inside their own containers). Cacti's Apache
+# listens on 80 inside the container (served at the document root, so its own
+# base path is '/'); the host publishes it on 8082, but that host port is
+# irrelevant here — this is the in-network address.
+base_url: http://target-cacti
+
+# Source tree Noir analyses and the SAST baseline reads, relative to the repo
+# root — this target's own clone at the pinned tag:
+#   git clone --depth 1 --branch release/1.2.22 \
+#     https://github.com/Cacti/cacti targets/cacti/src
+# It is the SAME tree the image is built from (images/cacti/Dockerfile pins the
+# commit); keep the two in step by cloning from the same tag.
+source_dir: src
+
+# Values substituted into route-template placeholders so a seed is fetchable.
+# Cacti routes are top-level .php scripts keyed by query parameters rather than
+# path segments, so this is small — the ids that make a parameterised page
+# resolve to the seeded device (host 1) and its script-server data source
+# (local_data_id 6, the one CVE-2022-46169 rides). An unknown placeholder falls
+# back to "1" in noir_runner.substitute_path.
+path_vars:
+  id: "1"
+  host_id: "1"
+  local_data_id: "6"
+  poller_id: "1"
+  action: edit
+  tab: general
+
+# Benign values for Cacti form/query fields, so a reconstructed POST body or a
+# fuzzed query submits the flagged parameter inside a plausible request. The
+# login field names are Cacti's own (login_username / login_password); `filter`
+# and `rfilter` are its list-page search fields.
+form_fillers:
+  login_username: admin
+  login_password: "DastAdminPass123!"
+  filter: test
+  rfilter: test
+  drp_action: "1"
+  host_id: "1"
+
+# Cacti's login is a CSRF-guarded HTML form: GET /index.php sets the `Cacti`
+# session cookie and embeds a __csrf_magic token, and the POST must carry that
+# token plus action=login. `strategy: form` is the same flow Gitea uses; the one
+# difference Cacti introduced is the single-quoted CSRF field name, handled by
+# the widened token regex in auth.py rather than here.
+#
+# The two authenticated markers (the SQLi and the XSS) both need admin, and
+# Cacti's user administration is itself admin-gated, so there is no meaningful
+# sub-admin tier a scan surface would differ on — the Cacti-user cell serves no
+# marker (RUN-PLAN §5). But the campaign scans every target at none/user/admin
+# (decision 3), so `env/seed.sh` seeds a DISTINCT non-admin account (`dastuser`)
+# for the `--auth user` session; it carries the admin realm set (so it reaches
+# the console the `Logged in as` indicator lives on) but is a separate login, which is
+# all the cross-level comparison needs. The flagship CVE (CVE-2022-46169) is
+# UNAUTHENTICATED and needs neither account.
+auth:
+  strategy: form
+  login_path: /index.php
+  csrf_field: __csrf_magic
+  username_field: login_username
+  password_field: login_password
+  extra_login_fields:
+    action: login
+  session_cookie: Cacti
+  # Not "Logout": every Cacti page, the login page included, carries
+  # `var logout='Logout';` in its script block, so that matched logged OUT too.
+  # `Logged in as <user>` heads the console page only when signed in.
+  logged_in_indicator: "Logged in as"
+  # The scan never requests these (see AuthProfile.logout_markers): Noir extracts
+  # logout.php like any page, and seeding it ended the session 6 min into a scan.
+  logout_markers: ["/logout.php"]
+  # Kept out of the scan (see AuthProfile.destructive_markers): the account (password,
+  # profile, user and group admin, auth domains), global settings (the auth method
+  # among them), utilities' cache rebuilds, template imports, plugin management, and
+  # every list page's bulk action (`drp_action`: delete, disable). The device edit form
+  # (host.php) stays: it is the SNMP-options marker's sink.
+  destructive_markers: ["settings.php", "utilities.php", "user_admin.php",
+                        "user_group_admin.php", "user_domains.php",
+                        "auth_changepassword.php", "auth_profile.php",
+                        "templates_import.php", "plugins.php", "body:drp_action="]
+  users:
+    - { role: user,  username: dastuser, password: DastUserPass123! }
+    - { role: admin, username: admin,    password: DastAdminPass123! }
+
+# The independent SAST/SCA static-analysis findings (`dast analyze`), which read
+# `source_dir` above. Not part of the DAST chain — no correlation, no
+# verification, no model. Cacti is almost entirely PHP (its JavaScript is
+# vendored libraries), so only the PHP rules run. OSV-Scanner needs no
+# configuration; Cacti ships a composer.json for a few dev tools but pins most of
+# its runtime libraries as a vendored tree, so the SCA pass sees comparatively
+# little — the counterpoint to Grafana's two dense manifests.
+source_analysis:
+  semgrep_rulesets:
+    - php
+
+# Where this target's route handlers' shared logic lives, for the scoped code
+# extractor that resolves Noir's per-endpoint `callees` to actual source
+# (universal-ctags). Cacti's handlers are the ~80 top-level .php scripts, but the
+# functions they call — db_fetch_*, get_client_addr, the poll_for_data helpers —
+# live in lib/, so that is the scope worth indexing. `include/` is deliberately
+# NOT scoped: it contains the vendored libraries (include/vendor/*), which would
+# bury the app's own symbols in third-party ones. A stated limitation, the twin
+# of Grafana's: the sink function of the headline CVE (poll_for_data in
+# remote_agent.php) is a top-level script, not a lib/ symbol, so the extractor
+# grounds the surrounding helpers rather than the entry point itself.
+code_context:
+  scope:
+    - lib
+  languages:
+    - PHP
+  kinds:
+    PHP: f
+
+# Noir technology classifications: KEEP php_pure for this target — the opposite
+# of the WordPress decision, and for the stated reason there. WordPress drops
+# php_pure because its .php files under src/ are plugin internals it never serves
+# as URLs; Cacti is a framework-less PHP app whose top-level .php files ARE its
+# routes (host.php, graphs.php, remote_agent.php, …), so php_pure is exactly the
+# route set the scan needs. No noir_ignore_technologies block, therefore.
+
+# Crawlers for this target. Cacti 1.2 is server-rendered PHP with jQuery-driven
+# console navigation. `traditional` parses the rendered HTML and reaches the
+# form and list pages directly; `client` drives a real browser for the
+# JS-populated console tree. `traditional` stays first for the same reason as the
+# other targets: it is cheap and gives the client crawler a populated tree to
+# start from.
+spiders:
+  - traditional
+  - client
+
+# ZAP context settings. `action` is a structural parameter here for the same
+# reason as WordPress, in a different shape: Cacti routes by BOTH the .php
+# filename AND an `?action=<verb>` on it (host.php?action=edit,
+# graphs.php?action=graph_edit, and the CVE's own
+# remote_agent.php?action=polldata). ZAP builds its tree from paths, so without
+# this every action on a page collapses into one node and the active scanner
+# attacks one verb where the page has several. Declaring `action` structural
+# makes each value its own node.
+#
+# This CHANGES WHAT A SCAN CONTAINS: it is in the run's configuration digest, so
+# a run carrying it is not comparable with one that does not. Cacti has no earlier
+# baseline to invalidate (it is new), so it is adopted from the first run. See
+# src/dast_orchestrator/zap_context.py.
+zap_context:
+  structural_parameters:
+    - action
+
+# Fixed request headers the scanner must carry on every request, injected as ZAP
+# Replacer rules exactly like the auth cookie. remote_agent.php — where
+# CVE-2022-46169 lives — rejects any request whose X-Forwarded-For does not
+# reverse-resolve to a configured poller (remote_client_authorized()), so without
+# this header the active scanner never gets past that gate to the command-
+# injection sink, however well the URL is seeded. 127.0.0.1 resolves to
+# "localhost", which is the seeded poller's hostname. This is NOT a login (no
+# session, no credential) — it is a static header the application trusts — so it
+# is a target property, not a run flag. It changes what the scan can REACH, so it
+# is in the run's configuration digest.
+scan_headers:
+  X-Forwarded-For: "127.0.0.1"
+
+# How to recover Cacti when it wedges under sustained scanning — the inline twin
+# of rerun-cacti-ceiling-driver.sh's restart_and_wait, so the blind scan path
+# self-heals the same way the ceiling driver does. Two failure modes make Cacti
+# the only target that needs this: CVE-2022-46169's RCE spawns resident
+# script_server processes that each hold a MariaDB connection and never exit, so
+# repeated scanning saturates max_connections and deadlocks the target AFTER a
+# run; and its 342-endpoint seed storms /JSON/core/action and drops the
+# connection ~1 in 3 (httpx.RemoteProtocolError), crashing the scan pre-triage.
+# On a recoverable scan failure the scan stage restarts these containers and
+# waits for the login page before retrying under a fresh run id. Failure-path
+# only — it changes nothing a healthy scan does — so it is NOT in the config
+# digest. Readiness is derived from `auth` above (the login page must serve
+# login_password again), so only the containers are named here.
+recovery:
+  containers:
+    - target-cacti
+    - target-cacti-db

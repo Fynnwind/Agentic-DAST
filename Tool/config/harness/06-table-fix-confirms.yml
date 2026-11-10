@@ -1,0 +1,59 @@
+# Optimisation pass 6 — testing a prediction made in advance.
+#
+#   uv run dast harness config/harness/06-table-fix-confirms.yml
+#
+# ~1 h, ~$0.06. Three rows, one configuration, same stored corpus.
+
+# ---------------------------------------------------------------------------
+# THE PREDICTION, WRITTEN DOWN BEFORE THE RUN
+#
+#   Sheet 5 established that `agreement.llm-only` — 0-3 in every run this
+#   project has ever recorded — consisted, essentially entirely, of ONE rule:
+#   90035 (Server Side Template Injection, High risk / High confidence). The
+#   deterministic table had no row for it, so `decide()` returned no-rescan and
+#   routed no tool, and nothing anywhere recorded that a decision had been
+#   skipped rather than made. The LLM arm flagged it in all six runs.
+#
+#   Measured over the corpus with the table as it stood: it enumerated 974 of
+#   975 findings. The single gap was the scan's only High/High alert.
+#
+#   `RESCAN_TABLE_VERSION` is now 2 and 90035 routes to nuclei with ALWAYS.
+#
+#   PREDICTION: `llm-only` falls to ~0, and `both` rises by roughly the one
+#   finding, because the arm's only reliable contribution is now made for free
+#   and reproducibly by the control arm.
+#
+# WHY RUN IT RATHER THAN ASSERT IT
+#
+#   The prediction is nearly mechanical, and that is exactly why it is cheap to
+#   check and embarrassing to get wrong. If `llm-only` does NOT fall, then it was
+#   never only 90035 and sheet 5's central claim is wrong — which would be far
+#   more important than the tidy story. Three repeats because the column's own
+#   run-to-run range is 1-3, so a single run showing 0 would prove nothing.
+#
+#   A FALL HERE IS NOT A REGRESSION and must not be reported as one. It is the
+#   control arm absorbing work the experimental arm was doing — the intended
+#   outcome of fixing the table, and the reason the fix was made even though it
+#   costs the LLM arm its only measurable per-finding win.
+#
+#   Also confirm the guardrails: `llm_findings_unanswered` ~1, and the 90035
+#   finding now carrying `deterministic.needs_rescan: true` with tool `nuclei`.
+# ---------------------------------------------------------------------------
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  max_cost_usd: 0.25
+  env:
+    SHARED_AUTH_MODE: none
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_PROMPT_VERSION: "3"        # the default v4 did not displace
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_REPEATS: "1"            # held; the variable is the table
+
+rows:
+  - name: table-v2
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3

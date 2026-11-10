@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thesis.local/schemas/noir-ai-context.schema.json",
+  "title": "Noir AI-context artifact",
+  "description": "Distilled per-endpoint static context produced by `noir scan --ai-context` and written by src/dast_orchestrator/noir_runner.py. Phase 2 only produces and stores this; the Phase 3 LLM correlation pass is its consumer. Documented here so that contract is fixed before anything depends on it.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "noir_image", "source_dir", "endpoints"],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Bumped whenever a consumer-visible field changes."
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "UTC timestamp, %Y%m%dT%H%M%SZ. Matches the sibling zap-alerts-<ts>.json of the same run.",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z$"
+    },
+    "noir_image": {
+      "type": "string",
+      "description": "Pinned Noir image the artifact came from, e.g. ghcr.io/owasp-noir/noir:1.2.1. Never a :latest tag."
+    },
+    "source_dir": {
+      "type": "string",
+      "description": "Host path of the analysed source tree; must be the same version as the scanned target."
+    },
+    "endpoints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/endpoint" }
+    }
+  },
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "required": ["key", "method", "path", "technology", "ai_context"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "\"<METHOD> <route template>\", e.g. \"POST /{username}/{reponame}/settings\". The join key between this artifact and a ZAP finding. Note the template is NOT the concrete URL ZAP reports: correlation must match the ZAP URL back onto the template.",
+          "pattern": "^[A-Z]+ .+$"
+        },
+        "method": { "type": "string" },
+        "path": {
+          "type": "string",
+          "description": "Route template as registered in source, with framework placeholders intact ({username}, {sha:[a-f0-9]{7,40}}, trailing *)."
+        },
+        "technology": {
+          "type": "string",
+          "description": "Noir detector that produced the endpoint, e.g. go_chi."
+        },
+        "code_paths": {
+          "type": "array",
+          "description": "Where the route is registered. Feeds SARIF locations and gives the LLM a file:line to reason about.",
+          "items": {
+            "type": "object",
+            "required": ["path", "line"],
+            "properties": {
+              "path": { "type": "string" },
+              "line": { "type": "integer" }
+            }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "description": "Noir tagger output, e.g. {name: auth, tagger: go_auth}.",
+          "items": { "type": "object" }
+        },
+        "ai_context": {
+          "type": "object",
+          "description": "Noir's five context categories. Every category is always present; an empty array means Noir found nothing, not that the category is missing.",
+          "required": ["guards", "callees", "sources", "sinks", "validators", "signals"],
+          "properties": {
+            "guards": {
+              "description": "Auth/authorisation middleware protecting the route. Primary signal for downgrading a ZAP access-control finding.",
+              "$ref": "#/$defs/signalList"
+            },
+            "callees": {
+              "description": "Direct 1-hop functions called from the handler body.",
+              "$ref": "#/$defs/signalList"
+            },
+            "sources": {
+              "description": "Attacker-controlled inputs reaching the handler.",
+              "$ref": "#/$defs/signalList"
+            },
+            "sinks": {
+              "description": "Dangerous operations (redirect, exec, sql, path, ...). Primary signal for promoting a low-confidence ZAP alert to a rescan.",
+              "$ref": "#/$defs/signalList"
+            },
+            "validators": {
+              "description": "Input validation/sanitisation applied before a sink.",
+              "$ref": "#/$defs/signalList"
+            },
+            "signals": {
+              "description": "Route registration and detected technology; always at least the route_definition record.",
+              "$ref": "#/$defs/signalList"
+            }
+          }
+        }
+      }
+    },
+    "signalList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/signal" }
+    },
+    "signal": {
+      "type": "object",
+      "description": "Uniform record shape Noir uses across all five categories.",
+      "required": ["kind", "name", "confidence"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Category-specific type, e.g. auth_guard, redirect, request_input, route_definition."
+        },
+        "name": { "type": "string" },
+        "source": {
+          "type": "string",
+          "description": "Which Noir analyser emitted it, e.g. go_auth, callee, detector, route."
+        },
+        "description": { "type": "string" },
+        "path": { "type": "string" },
+        "line": { "type": "integer" },
+        "confidence": {
+          "type": "integer",
+          "description": "0-100, Noir's own confidence. Carried through so the correlation pass can weight it rather than treating every signal as equally certain.",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Surrounding source lines, ' | '-joined with line-number prefixes."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,112 @@
+# Optimisation pass 4 — is the synthesis pass undersampled rather than unreliable?
+#
+#   uv run dast harness config/harness/04-synthesis-sampling.yml --dry-run
+#   uv run dast harness config/harness/04-synthesis-sampling.yml
+#
+# ~1.5 h, ~$0.35. Every row re-triages the SAME stored corpus; nothing re-scans.
+
+# ---------------------------------------------------------------------------
+# WHAT SHEETS 1-3 ESTABLISHED — and why this is the only lever left worth pulling
+#
+#   All three of OBJECTIVE.md's primary metrics are now measured:
+#
+#   1. `llm-only` rescan flags: FLAT AT 1-2 across 20 variants (two models,
+#      three context levels, before and after the verdict-contract fix). Per-
+#      finding triage is not where the model adds value. CLOSED.
+#
+#   2. Verification pass 2 on real residue: every one of 27 transitions is a
+#      DOWNGRADE (20 -> refuted, 7 -> not-attempted, 0 -> confirmed), and only
+#      2 of 7 findings get a stable verdict across six repeats. Disposition,
+#      not detection. CLOSED.
+#
+#   3. Cross-endpoint synthesis: 62% of 32 distinct claims appear in exactly ONE
+#      run of 20 against one corpus. This is the one channel ZAP and the lookup
+#      table structurally cannot reach, and the only one where real findings are
+#      produced at all.
+#
+#   Also closed, for free, from stored runs: the deterministic table and the
+#   model name the SAME verification tool 96% of the time, so model-directed
+#   ROUTING is not the missing capability.
+#
+# THE MEASUREMENT THAT MOTIVATES THIS SHEET
+#
+#   Bootstrapping over those 20 stored runs (no money, no new calls) says the
+#   synthesis pass is UNDERSAMPLED rather than wrong:
+#
+#     calls   mean distinct claims   P(the one high-severity claim surfaces)
+#       1            3.5                          25%
+#       3            8.5                          60%
+#       5           12.5                          80%
+#       8           17.5                          95%
+#
+#   A single synthesis call finds this corpus's only high-severity cross-endpoint
+#   claim ONE TIME IN FOUR. Each call costs ~$0.0025 against a 45-minute scan.
+#   That makes sampling the cheapest reliability available anywhere in this
+#   pipeline — if the bootstrap holds when the calls are actually made.
+#
+# THE QUESTION THIS SHEET ASKS
+#
+#   Does live sampling reproduce the bootstrap, and does `seen_in` separate
+#   signal from noise?
+#
+#   The bootstrap pooled runs that differed in context level and model. Sheets 1
+#   and 2 found neither has a measurable effect, so pooling is defensible — but
+#   it is an assumption, and this sheet is what tests it against calls actually
+#   made under ONE configuration.
+#
+#   Read, in order:
+#     * `synthesis.samples_collected` — did every sample actually happen?
+#     * `correlated_synthesis_findings` — distinct claims. Expect ~3.5 / ~8.5 /
+#       ~12.5. Materially fewer means the bootstrap over-counted, most likely
+#       because pooled configurations vary more than one configuration repeated.
+#     * `reproducibility.seen_in` per claim — THE point of the sheet. If the
+#       high-severity claims cluster at seen_in >= 2 while one-offs are noise,
+#       the score is a usable confidence signal. If severity and seen_in are
+#       unrelated, sampling buys recall but no way to rank what it found, and
+#       that is a much weaker result which must be reported as such.
+#
+#   NEGATIVE RESULT TO WATCH FOR: more samples necessarily produce more claims,
+#   so a bare rise in the count proves nothing. The claim of this sheet is about
+#   WHICH claims and how they are scored, not how many.
+# ---------------------------------------------------------------------------
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  # Three rows x three repeats x (pass 1 ~$0.03 + samples), with headroom.
+  max_cost_usd: 0.75
+  env:
+    SHARED_AUTH_MODE: none
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+
+rows:
+  # ---- 1. one call: the historical behaviour, as the baseline --------------
+  # Repeated three times because this row IS the variance yardstick for the
+  # others: "how much do two single-call runs differ" is the number every
+  # comparison below has to beat.
+  - name: sample-1
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      TRIAGE_SYNTHESIS_REPEATS: "1"
+
+  # ---- 2. three calls -----------------------------------------------------
+  - name: sample-3
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      TRIAGE_SYNTHESIS_REPEATS: "3"
+
+  # ---- 3. five calls ------------------------------------------------------
+  # Where the bootstrap says the high-severity claim reaches 80%. If sampling
+  # works at all, the difference between this row and row 1 is where it shows.
+  - name: sample-5
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      TRIAGE_SYNTHESIS_REPEATS: "5"

@@ -1,0 +1,141 @@
+# The Gitea 1.16.0 target — every Gitea-specific value the pipeline needs.
+#
+# This is the ONLY place that names Gitea's URL, route-placeholder conventions,
+# login form, or seeded accounts. A new target is a sibling DIRECTORY like this
+# one — target.yml, src/, env/ — plus one `include:` line in
+# stacks/persistent.yml; no Python is edited.
+#
+# The seeded credentials match env/seed-users.sh next door and are TEST-ONLY for
+# the loopback-bound, deliberately-vulnerable local target — fixed and public on
+# purpose so every run authenticates identically.
+
+name: gitea
+
+# URL ZAP and the verification tools reach the target at — a container name on
+# dast-net, not localhost (they run inside their own containers).
+base_url: http://target-gitea:3000
+
+# Source tree Noir analyses, relative to the repo root — this target's own, so
+# it sits beside the definition that names it. Must match the running target's
+# version:
+#   git clone --depth 1 --branch v1.16.0 \
+#     https://github.com/go-gitea/gitea targets/gitea/src
+source_dir: src
+
+# OpenAPI/Swagger spec for the FR-06 demonstration run ONLY — kept here but
+# INACTIVE (commented out) by design. `openapi_import` fires on EVERY gitea scan
+# whenever this key is present, pulling Gitea's 291 declared `/api/v1` routes
+# (Swagger 2.0 at `/swagger.v1.json`, basePath `/api/v1`) into the site tree —
+# the FR-06 run `data/runs/20261019T211339Z-gitea-9fcc38` (2026-10-19) grew the
+# seed tree 509 -> 729 URLs that way. Live, it would divert the whole rescan
+# corpus from the reported corpus (which imported no openapi). So it stays
+# commented: uncomment the two lines to reproduce the one-off FR-06 run; leave
+# them commented for the rescan so gitea matches the 509-URL corpus.
+#openapi:
+#  - url: http://target-gitea:3000/swagger.v1.json
+
+# Values substituted into Gitea's chi path placeholders so a seed is fetchable.
+# Matches the fixtures in the target (admin `thesis`, repo `demo`). An unknown
+# placeholder falls back to "1" in noir_runner.substitute_path.
+path_vars:
+  username: thesis
+  reponame: demo
+  org: thesis
+  userid: "1"
+  team: owners
+  provider: github
+  type: all
+  action: list
+  configType: server
+  size: "84"
+  sha: "0000000000000000000000000000000000000000"
+  ext: md
+  period: weekly
+  filename: README.md
+  fileName: README.md
+  vTag: v1
+  uuid: "00000000-0000-0000-0000-000000000000"
+  hash: "00000000000000000000000000000000"
+
+# Benign values for Gitea's login/registration form fields, so a reconstructed
+# POST body submits the flagged parameter inside a plausible form.
+form_fillers:
+  user_name: thesis
+  email: thesis@example.com
+  password: "Password123!"
+  retype: "Password123!"
+  remember: "on"
+  _csrf: x
+
+# Gitea's form login: a hidden `_csrf` field on the GET login page, a POST of
+# credentials, and the `i_like_gitea` session cookie. `Sign Out` appears in the
+# page chrome only when authenticated. `strategy: form` is the built-in
+# CSRF-form mechanism (see auth.py); a JSON-API target would name another.
+auth:
+  strategy: form
+  login_path: /user/login
+  csrf_field: _csrf
+  session_cookie: i_like_gitea
+  logged_in_indicator: "Sign Out"
+  # The scan never requests these (see AuthProfile.logout_markers): Noir extracts
+  # POST /user/logout, and seeding it ended the session a second into a scan.
+  logout_markers: ["/user/logout"]
+  # What the logged-in spider wrecked in the 2026-11-03 live check, kept out of the scan
+  # (see AuthProfile.destructive_markers): every settings page (repo rename/archive/
+  # delete/transfer, account delete, 2FA, emails, keys, webhooks), the admin dashboard's
+  # maintenance jobs (a POST to /admin exactly; the admin pages stay), queue
+  # operations, and admin user edits. Gitea hung after them. /repo/migrate stays: it is
+  # the migration marker's sink (author, 2026-11-03). The site-wide webhook pages too
+  # (author, 2026-11-04): the G1 admin scan created 13,197 hooks there, every push
+  # fanned out to all of them, and Gitea's SQLite stalled. The hook ids in their paths
+  # rule out exact POST markers.
+  destructive_markers: ["/settings", "POST /admin", "/admin/monitor/queue/", "/admin/users/",
+                        "/admin/hooks", "/admin/default-hooks", "/admin/system-hooks"]
+  users:
+    - { role: user,  username: dastuser,  password: DastUserPass123! }
+    - { role: admin, username: dastadmin, password: DastAdminPass123! }
+
+# The independent SAST/SCA static-analysis findings (`dast analyze`), which read `source_dir`
+# above. Not part of the DAST chain — no correlation, no verification, no model.
+# Each ruleset is a directory of the pinned semgrep-rules checkout; Gitea is Go
+# with a JavaScript frontend, so both language sets run. OSV-Scanner needs no
+# configuration: it finds go.mod and package-lock.json by itself.
+source_analysis:
+  semgrep_rulesets:
+    - go
+    - javascript
+
+# Where this target's route handlers live, for the scoped code extractor that
+# resolves Noir's per-endpoint `callees` to actual source (universal-ctags).
+#
+# `routers/web` and no wider, deliberately. Measured 2026-08-28: expanding
+# same-package callees from a handler saturates at one hop (39 -> 320 -> 358
+# lines) *because* the calls that would go further — models., ctx., services/ —
+# leave the indexed tree. The scope is what bounds the expansion; widening it to
+# the whole repository would trade that for a hop limit picked by feel.
+#
+# Measured cost of this scope: 647 symbols, 332 of Noir's 354 endpoints resolve
+# to at least one definition (94%), median 69 lines (~210 tokens) per endpoint.
+# The 22 that do not are handlers in `services/lfs` and `routers/api`, or route
+# bodies that only call the standard library.
+code_context:
+  scope:
+    - routers/web
+  languages:
+    - Go
+  kinds:
+    Go: f
+
+# Crawlers for this target: `traditional` only, DELIBERATELY — stated here rather
+# than left to the `DEFAULT_SPIDERS` fallback it used to inherit. Gitea 1.16 is
+# server-rendered Go templates and Noir seeds its 354 routes (plus the OpenAPI
+# spec on the FR-06 run), so the traditional link crawler plus the seeds reach the
+# app; its small amount of JS-driven navigation adds no routes a scan needs.
+# Measured live 2026-11-02 for the rescan: adding the `client` (browser) spider
+# took the tree 932 → 933 (+1 URL) and stalled (poll_outcome=client-stalled),
+# versus 159 → 331 on Grafana's React SPA — so the browser crawl is reserved for
+# the JS-driven targets (grafana/wordpress/cacti) and would buy Gitea nothing but
+# a stalled-crawl status and browser time on every run. The resolved spiders are
+# unchanged, so Gitea's config digest still matches the reported corpus.
+spiders:
+  - traditional

@@ -1,0 +1,65 @@
+# The Grafana target's own service. Pulled into the persistent stack by
+# `include:` in stacks/persistent.yml, which is what makes adding a target one
+# new directory plus one include line.
+#
+# `include:` (not `-f a.yml -f b.yml`) on purpose: with include, every relative
+# path below resolves against THIS file's directory, so `./data` means
+# targets/grafana/env/data. Passing two -f files instead would resolve both
+# against the FIRST file's directory, silently pointing this bind mount at
+# targets/data — an empty Grafana with no visible cause.
+
+services:
+  grafana:
+    # Pinned to 8.3.0 (first 8.3 release, native linux/arm64): every security
+    # fix from 8.3.1-8.3.10 is present unpatched. The one that matters most is
+    # CVE-2021-43798 (fixed 8.3.1) — unauthenticated directory traversal under
+    # /public/plugins/<plugin-id>/, the only marker in this project's corpus
+    # whose payload rides a path segment ZAP already injects into and whose
+    # oracle is a byte string. Never use :latest.
+    # Pinned by digest (rescan freeze 2026-10-26); `docker images --digests grafana/grafana`.
+    image: grafana/grafana:8.3.0@sha256:64853d72058a08490a9edbba3e7884ae1a2aa0767c6f4d43d1f06f9c477dd7d4
+    container_name: target-grafana
+    restart: unless-stopped
+    environment:
+      # A known admin password so the seed script can drive the admin API.
+      # TEST-ONLY, fixed and public on purpose: the target is loopback-bound and
+      # deliberately vulnerable, and every run must authenticate identically.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: DastAdminPass123!
+      # Grafana's own defaults, stated rather than inherited, because both
+      # decide what an UNAUTHENTICATED scan can see and a silent default would
+      # leave the detection denominator resting on an unrecorded choice.
+      #
+      # Anonymous access stays OFF. Turning it on would hand the blind scan
+      # Grafana's whole dashboard surface, and that is a deployment option, not
+      # what Grafana is: a detection rate measured over a surface we opened
+      # ourselves would be a number about this file. Grafana is therefore the
+      # first target in the corpus that is essentially auth-gated — the
+      # unauthenticated surface is the login page, the static bundle, and the
+      # plugin asset route the traversal lives on. That is the result, not a
+      # setup problem, and `--auth admin` is how the delta gets measured.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # No outbound calls from a target under test: version checks and the
+      # plugin/news fetches would make the scan surface depend on the internet.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      # This target's persistent state (the SQLite database), beside its
+      # definition and seed scripts.
+      - ./data:/var/lib/grafana
+    # Bound to loopback: the scan path is container-to-container over dast-net
+    # (ZAP reaches Grafana by name), so publishing to all interfaces would only
+    # expose a deliberately-vulnerable target to the LAN for no functional gain.
+    # 8002 on the host (the targets share a memorable 8000-8003 block); inside the
+    # container it is Grafana's own 3000, which is what `base_url` names.
+    ports:
+      - "127.0.0.1:8002:3000"   # HTTP (scan surface), host-only
+    networks:
+      - dast-net
+
+networks:
+  dast-net:
+    external: true

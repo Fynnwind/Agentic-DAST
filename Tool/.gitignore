@@ -1,0 +1,49 @@
+# Data
+data/
+
+# Secrets / environment
+config/scanner/.env
+*.env
+!config/scanner/default.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# uv
+# (uv.lock IS committed for reproducibility)
+
+# Scan corpora under data/ are TRACKED (2026-10-12): a run is a ~45-min scan and
+# the corpus every later analysis reads, too expensive to risk losing — so
+# data/runs and data/harness are committed. Only the ephemeral scratch namespace
+# (dry-run / smoke) stays ignored. Per-row *.env overlays inside a run dir remain
+# ignored by the *.env rule above (reproducible from the committed sheet, and that
+# rule is a credential-safety backstop — do not weaken it).
+data/scratch/
+# Transient per-stage run locks (`.lock-<stage>[-<suffix>]`) — released at stage
+# end; never corpus. Scoped under data/ so uv.lock stays committed.
+data/**/.lock-*
+
+# The targets live in the sibling top-level ../Targets (the tool/targets split);
+# their source clones and runtime state are ignored by Targets/.gitignore.
+
+# The other scanners' pinned inputs, together because they are one category:
+# the Semgrep ruleset checkout (at the commit pinned in
+# semgrep_runner.py — not vendored, for the same reason as a target's
+# source clone, and because the rules carry their own licence) and the OSV
+# advisory-database snapshot (~230MB of zips, identified by hash in each run's
+# metrics rather than by commit).
+static-analysis-cache/semgrep-rules/
+static-analysis-cache/osv-db/
+
+# Container-managed volumes (bind mounts)
+docker/zap-data/
+zap-data/
+
+# macOS
+.DS_Store

@@ -1,0 +1,64 @@
+# RESCAN · G5 — the model stages repeated on one stored scan.
+# Frozen rescan of 2026-11-03 (NEXT_SESSION §6, thesis docs/RERUN-PLAN.md §6).
+#
+#   uv run dast harness config/harness/rerun-g5-model-repeats.yml
+#
+# WHAT THIS IS. Triage then verify, repeated on each target's G1 admin-blind scan.
+# The scan is fixed, so the findings put to the model are fixed too, and whatever
+# varies between repeats is the model and its served provider alone. The whole-run
+# repeats re-scan every time, so they mix the scanner's spread with the model's and
+# cannot stand in for this (restored 2026-11-03: the sheets of 2026-10-26 labelled
+# G5 "folded into the repeats" by mistake, and the plan said "Do not cut G5").
+#
+# n = 4 per target, like the repeats band: G1's own admin-blind triage and verify
+# are the first sample (same scan, same configuration), so each row repeats 3.
+# The defaults are G1's, and each row's env is G1's admin-blind row's; keep them
+# identical (tests/unit/test_rerun_sheets.py checks it), or the fold no longer holds.
+#
+# DEFERRED VERIFY PROBES THE LIVE TARGET. Reset each target once to its clean
+# snapshot before this sheet and do not scan it while the sheet runs, as for G6.
+# Blind (oracle and OOB off), so the probes do not meaningfully mutate the target.
+#
+# `run:` names each target's G1 admin-blind scan. After a fresh G1, point it there
+# with scripts/rerun-rewire-refs.py (it covers this sheet with G6, G7 and G9).
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 150
+  env:
+    # freeze commit: rerun-2026-11-03f
+    SCAN_RESET_TARGET: "on"
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed; served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""             # preference-routed (Friendli dropped minimax-m2.5); do NOT pin
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "20"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "150"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # grafana: TRIAGE_CODE_CONTEXT none, as in G1 (Noir extracts none of its routes).
+  - {name: grafana-admin-blind-rep,   run: 20261104T021051Z-grafana-8026ee,   stages: [triage, verify], repeat: 3, env: {SHARED_AUTH_MODE: admin, TRIAGE_CODE_CONTEXT: none}}
+  - {name: wordpress-admin-blind-rep, run: 20261104T050403Z-wordpress-035a7a, stages: [triage, verify], repeat: 3, env: {SHARED_AUTH_MODE: admin}}
+  - {name: cacti-admin-blind-rep,     run: 20261104T180821Z-cacti-70ad1b,     stages: [triage, verify], repeat: 3, env: {SHARED_AUTH_MODE: admin}}
+  - {name: gitea-admin-blind-rep,     run: 20261104T152843Z-gitea-0614b6,     stages: [triage, verify], repeat: 3, env: {SHARED_AUTH_MODE: admin}}

@@ -1,0 +1,389 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "invocations": [
+        {
+          "executionSuccessful": true
+        }
+      ],
+      "results": [
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cmd/dump.go",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 51,
+                  "endLine": 242,
+                  "snippet": {
+                    "text": "\t\t\t\t\tCustomName: path.Join(\"data\", \"lfs\", objPath),"
+                  },
+                  "startColumn": 18,
+                  "startLine": 242
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "`path.Join(...)` always joins using a forward slash. This may cause issues on Windows or other systems using a different delimiter. Use `filepath.Join(...)` instead which uses OS-specific path separators."
+          },
+          "properties": {},
+          "ruleId": "rules.go.lang.correctness.use-filepath-join",
+          "ruleIndex": 1
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cmd/serv.go",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 66,
+                  "endLine": 295,
+                  "snippet": {
+                    "text": "\t\tgitcmd = exec.CommandContext(ctx, verbs[0], verbs[1], repoPath)"
+                  },
+                  "startColumn": 12,
+                  "startLine": 295
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Detected non-static command inside Command. Audit the input to 'exec.Command'. If unverified user data can reach this call site, this is a code injection vulnerability. A malicious actor can inject a malicious script to execute arbitrary code."
+          },
+          "properties": {},
+          "ruleId": "rules.go.lang.security.audit.dangerous-exec-command",
+          "ruleIndex": 3
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cmd/web.go",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 29,
+                  "endLine": 71,
+                  "snippet": {
+                    "text": "\t\thttp.Redirect(w, r, target, http.StatusTemporaryRedirect)"
+                  },
+                  "startColumn": 23,
+                  "startLine": 71
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "An HTTP redirect was found to be crafted from user-input `r`. This can lead to open redirect vulnerabilities, potentially allowing attackers to redirect users to malicious web sites. It is recommend where possible to not allow user-input to craft the redirect URL. When user-input is necessary to craft the request, it is recommended to follow OWASP best practices to restrict the URL to domains in an allowlist."
+          },
+          "properties": {},
+          "ruleId": "rules.go.lang.security.injection.open-redirect",
+          "ruleIndex": 5
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cmd/web.go",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 61,
+                  "endLine": 146,
+                  "snippet": {
+                    "text": "\t\t\tlog.Info(\"%v\", http.ListenAndServe(\"localhost:6060\", nil))"
+                  },
+                  "startColumn": 19,
+                  "startLine": 146
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Found an HTTP server without TLS. Use 'http.ListenAndServeTLS' instead. See https://golang.org/pkg/net/http/#ListenAndServeTLS for more information."
+          },
+          "properties": {},
+          "ruleId": "rules.go.lang.security.audit.net.use-tls",
+          "ruleIndex": 4
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cmd/web_https.go",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 28,
+                  "endLine": 140,
+                  "snippet": {
+                    "text": "\ttlsConfig := &tls.Config{}"
+                  },
+                  "startColumn": 16,
+                  "startLine": 140
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "`MinVersion` is missing from this TLS configuration.  By default, as of Go 1.22, TLS 1.2 is currently used as the minimum. General purpose web applications should default to TLS 1.3 with all other protocols disabled.  Only where it is known that a web server must support legacy clients with unsupported an insecure browsers (such as Internet Explorer 10), it may be necessary to enable TLS 1.0 to provide support. Add `MinVersion: tls.VersionTLS13' to the TLS configuration to bump the minimum version to TLS 1.3."
+          },
+          "properties": {},
+          "ruleId": "rules.go.lang.security.audit.crypto.missing-ssl-minversion",
+          "ruleIndex": 2
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contrib/pr/checkout.go",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 53,
+                  "endLine": 245,
+                  "snippet": {
+                    "text": "\t\terr = os.MkdirAll(filepath.Dir(codeFilePath), 0755)"
+                  },
+                  "startColumn": 49,
+                  "startLine": 245
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Detected file permissions that are set to more than `0600` (user/owner can read and write). Setting file permissions to higher than `0600` is most likely unnecessary and violates the principle of least privilege. Instead, set permissions to be `0600` or less for os.Chmod, os.Mkdir, os.OpenFile, os.MkdirAll, and ioutil.WriteFile"
+          },
+          "properties": {},
+          "ruleId": "rules.go.lang.correctness.permissions.incorrect-default-permission",
+          "ruleIndex": 0
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cmd/dump.go",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 51,
+                  "endLine": 242,
+                  "snippet": {
+                    "text": "\t\t\t\t\tCustomName: path.Join(\"data\", \"lfs\", objPath),"
+                  },
+                  "startColumn": 18,
+                  "startLine": 242
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "`path.Join(...)` always joins using a forward slash. This may cause issues on Windows or other systems using a different delimiter. Use `filepath.Join(...)` instead which uses OS-specific path separators."
+          },
+          "properties": {},
+          "ruleId": "rules.go.lang.correctness.use-filepath-join",
+          "ruleIndex": 1
+        }
+      ],
+      "tool": {
+        "driver": {
+          "name": "Semgrep OSS",
+          "rules": [
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "fullDescription": {
+                "text": "Detected file permissions that are set to more than `0600` (user/owner can read and write). Setting file permissions to higher than `0600` is most likely unnecessary and violates the principle of least privilege. Instead, set permissions to be `0600` or less for os.Chmod, os.Mkdir, os.OpenFile, os.MkdirAll, and ioutil.WriteFile"
+              },
+              "help": {
+                "markdown": "Detected file permissions that are set to more than `0600` (user/owner can read and write). Setting file permissions to higher than `0600` is most likely unnecessary and violates the principle of least privilege. Instead, set permissions to be `0600` or less for os.Chmod, os.Mkdir, os.OpenFile, os.MkdirAll, and ioutil.WriteFile\n\n<b>References:</b>\n - [https://github.com/securego/gosec/blob/master/rules/fileperms.go](https://github.com/securego/gosec/blob/master/rules/fileperms.go)\n",
+                "text": "Detected file permissions that are set to more than `0600` (user/owner can read and write). Setting file permissions to higher than `0600` is most likely unnecessary and violates the principle of least privilege. Instead, set permissions to be `0600` or less for os.Chmod, os.Mkdir, os.OpenFile, os.MkdirAll, and ioutil.WriteFile"
+              },
+              "id": "rules.go.lang.correctness.permissions.incorrect-default-permission",
+              "name": "rules.go.lang.correctness.permissions.incorrect-default-permission",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-276: Incorrect Default Permissions",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: rules.go.lang.correctness.permissions.incorrect-default-permission"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "fullDescription": {
+                "text": "`path.Join(...)` always joins using a forward slash. This may cause issues on Windows or other systems using a different delimiter. Use `filepath.Join(...)` instead which uses OS-specific path separators."
+              },
+              "help": {
+                "markdown": "`path.Join(...)` always joins using a forward slash. This may cause issues on Windows or other systems using a different delimiter. Use `filepath.Join(...)` instead which uses OS-specific path separators.\n\n<b>References:</b>\n - [https://parsiya.net/blog/2019-03-09-path.join-considered-harmful/](https://parsiya.net/blog/2019-03-09-path.join-considered-harmful/)\n - [https://go.dev/src/path/path.go?s=4034:4066#L145](https://go.dev/src/path/path.go?s=4034:4066#L145)\n",
+                "text": "`path.Join(...)` always joins using a forward slash. This may cause issues on Windows or other systems using a different delimiter. Use `filepath.Join(...)` instead which uses OS-specific path separators."
+              },
+              "id": "rules.go.lang.correctness.use-filepath-join",
+              "name": "rules.go.lang.correctness.use-filepath-join",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "LOW CONFIDENCE"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: rules.go.lang.correctness.use-filepath-join"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "fullDescription": {
+                "text": "`MinVersion` is missing from this TLS configuration.  By default, as of Go 1.22, TLS 1.2 is currently used as the minimum. General purpose web applications should default to TLS 1.3 with all other protocols disabled.  Only where it is known that a web server must support legacy clients with unsupported an insecure browsers (such as Internet Explorer 10), it may be necessary to enable TLS 1.0 to provide support. Add `MinVersion: tls.VersionTLS13' to the TLS configuration to bump the minimum version to TLS 1.3."
+              },
+              "help": {
+                "markdown": "`MinVersion` is missing from this TLS configuration.  By default, as of Go 1.22, TLS 1.2 is currently used as the minimum. General purpose web applications should default to TLS 1.3 with all other protocols disabled.  Only where it is known that a web server must support legacy clients with unsupported an insecure browsers (such as Internet Explorer 10), it may be necessary to enable TLS 1.0 to provide support. Add `MinVersion: tls.VersionTLS13' to the TLS configuration to bump the minimum version to TLS 1.3.\n\n<b>References:</b>\n - [Semgrep Rule](https://github.com/securego/gosec/blob/master/rules/tls_config.go)\n - [https://go.dev/doc/go1.22#minor_library_changes](https://go.dev/doc/go1.22#minor_library_changes)\n - [https://pkg.go.dev/crypto/tls#:~:text=MinVersion](https://pkg.go.dev/crypto/tls#:~:text=MinVersion)\n - [https://www.us-cert.gov/ncas/alerts/TA14-290A](https://www.us-cert.gov/ncas/alerts/TA14-290A)\n",
+                "text": "`MinVersion` is missing from this TLS configuration.  By default, as of Go 1.22, TLS 1.2 is currently used as the minimum. General purpose web applications should default to TLS 1.3 with all other protocols disabled.  Only where it is known that a web server must support legacy clients with unsupported an insecure browsers (such as Internet Explorer 10), it may be necessary to enable TLS 1.0 to provide support. Add `MinVersion: tls.VersionTLS13' to the TLS configuration to bump the minimum version to TLS 1.3."
+              },
+              "helpUri": "https://github.com/securego/gosec/blob/master/rules/tls_config.go",
+              "id": "rules.go.lang.security.audit.crypto.missing-ssl-minversion",
+              "name": "rules.go.lang.security.audit.crypto.missing-ssl-minversion",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-327: Use of a Broken or Risky Cryptographic Algorithm",
+                  "HIGH CONFIDENCE",
+                  "OWASP-A02:2021 - Cryptographic Failures",
+                  "OWASP-A03:2017 - Sensitive Data Exposure",
+                  "OWASP-A04:2025 - Cryptographic Failures",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: rules.go.lang.security.audit.crypto.missing-ssl-minversion"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "fullDescription": {
+                "text": "Detected non-static command inside Command. Audit the input to 'exec.Command'. If unverified user data can reach this call site, this is a code injection vulnerability. A malicious actor can inject a malicious script to execute arbitrary code."
+              },
+              "help": {
+                "markdown": "Detected non-static command inside Command. Audit the input to 'exec.Command'. If unverified user data can reach this call site, this is a code injection vulnerability. A malicious actor can inject a malicious script to execute arbitrary code.\n\n<b>References:</b>\n - [https://owasp.org/Top10/A03_2021-Injection](https://owasp.org/Top10/A03_2021-Injection)\n",
+                "text": "Detected non-static command inside Command. Audit the input to 'exec.Command'. If unverified user data can reach this call site, this is a code injection vulnerability. A malicious actor can inject a malicious script to execute arbitrary code."
+              },
+              "id": "rules.go.lang.security.audit.dangerous-exec-command",
+              "name": "rules.go.lang.security.audit.dangerous-exec-command",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-94: Improper Control of Generation of Code ('Code Injection')",
+                  "LOW CONFIDENCE",
+                  "OWASP-A03:2021 - Injection",
+                  "OWASP-A05:2025 - Injection",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: rules.go.lang.security.audit.dangerous-exec-command"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "fullDescription": {
+                "text": "Found an HTTP server without TLS. Use 'http.ListenAndServeTLS' instead. See https://golang.org/pkg/net/http/#ListenAndServeTLS for more information."
+              },
+              "help": {
+                "markdown": "Found an HTTP server without TLS. Use 'http.ListenAndServeTLS' instead. See https://golang.org/pkg/net/http/#ListenAndServeTLS for more information.\n\n<b>References:</b>\n - [https://golang.org/pkg/net/http/#ListenAndServeTLS](https://golang.org/pkg/net/http/#ListenAndServeTLS)\n",
+                "text": "Found an HTTP server without TLS. Use 'http.ListenAndServeTLS' instead. See https://golang.org/pkg/net/http/#ListenAndServeTLS for more information."
+              },
+              "id": "rules.go.lang.security.audit.net.use-tls",
+              "name": "rules.go.lang.security.audit.net.use-tls",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-319: Cleartext Transmission of Sensitive Information",
+                  "MEDIUM CONFIDENCE",
+                  "OWASP-A02:2021 - Cryptographic Failures",
+                  "OWASP-A03:2017 - Sensitive Data Exposure",
+                  "OWASP-A04:2025 - Cryptographic Failures",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: rules.go.lang.security.audit.net.use-tls"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "fullDescription": {
+                "text": "An HTTP redirect was found to be crafted from user-input `$REQUEST`. This can lead to open redirect vulnerabilities, potentially allowing attackers to redirect users to malicious web sites. It is recommend where possible to not allow user-input to craft the redirect URL. When user-input is necessary to craft the request, it is recommended to follow OWASP best practices to restrict the URL to domains in an allowlist."
+              },
+              "help": {
+                "markdown": "An HTTP redirect was found to be crafted from user-input `$REQUEST`. This can lead to open redirect vulnerabilities, potentially allowing attackers to redirect users to malicious web sites. It is recommend where possible to not allow user-input to craft the redirect URL. When user-input is necessary to craft the request, it is recommended to follow OWASP best practices to restrict the URL to domains in an allowlist.\n\n<b>References:</b>\n - [https://knowledge-base.secureflag.com/vulnerabilities/unvalidated_redirects___forwards/open_redirect_go_lang.html](https://knowledge-base.secureflag.com/vulnerabilities/unvalidated_redirects___forwards/open_redirect_go_lang.html)\n",
+                "text": "An HTTP redirect was found to be crafted from user-input `$REQUEST`. This can lead to open redirect vulnerabilities, potentially allowing attackers to redirect users to malicious web sites. It is recommend where possible to not allow user-input to craft the redirect URL. When user-input is necessary to craft the request, it is recommended to follow OWASP best practices to restrict the URL to domains in an allowlist."
+              },
+              "id": "rules.go.lang.security.injection.open-redirect",
+              "name": "rules.go.lang.security.injection.open-redirect",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-601: URL Redirection to Untrusted Site ('Open Redirect')",
+                  "HIGH CONFIDENCE",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: rules.go.lang.security.injection.open-redirect"
+              }
+            }
+          ],
+          "semanticVersion": "1.140.0"
+        }
+      }
+    }
+  ],
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/schemas/sarif-schema-2.1.0.json"
+}

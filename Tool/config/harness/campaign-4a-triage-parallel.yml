@@ -1,0 +1,73 @@
+# CAMPAIGN · BLOCK 4 · PHASE A — the TARGET-INDEPENDENT model work, run in
+# PARALLEL with block 3 (author's "safe partial parallel", 2026-10-13).
+#
+# Only TRIAGE here (reads stored reference scans + cloned source; never probes a
+# live target), so it does NOT violate §6's "nothing that verifies runs beside a
+# scan" and is safe to run while block 3 scans. The verify-bearing work (G5
+# verify, G6) is DEFERRED to campaign-4b, run after block 3's scans finish and
+# threaded to the triage suffixes THIS sheet produces.
+#
+# = G5 triage reps (blind x4 on the G1 scan, ceiling x2 on the G2 scan) — the
+#   triage half of "T V R"/"T V"; verify.json for each rep is written by 4b.
+# = G7 context (codenone / peernone), already triage-only in the source sheet.
+# Defaults copied verbatim from campaign-4-model-stages.yml; REF ids filled from
+# blocks 1-2.
+#   uv run dast harness config/harness/campaign-4a-triage-parallel.yml
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 12.0
+  timeout_minutes: 150
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7 — same commit as blocks 1-3
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed (baidu failed ~80% 2026-10-12); served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: user
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == G5 · triage reps on the G1 blind reference scan ([triage] x4) =========
+  - {name: grafana-user-blind-rep,   run: 20261012T145740Z-grafana-853739,     stages: [triage], repeat: 4}
+  - {name: wordpress-user-blind-rep, run: 20261012T163157Z-wordpress-ee000d,   stages: [triage], repeat: 4}
+  - {name: cacti-user-blind-rep,     run: 20261012T185327Z-cacti-f049d3,       stages: [triage], repeat: 4}
+  - {name: gitea-user-blind-rep,     run: 20261012T211124Z-gitea-2865f0,       stages: [triage], repeat: 4}
+
+  # == G5 · triage reps on the G2 ceiling reference scan ([triage] x2, oracle) =
+  - {name: grafana-user-ceiling-rep,   run: 20261013T000645Z-grafana-6a767a,   stages: [triage], repeat: 2, env: {SHARED_ORACLE: "on"}}
+  - {name: wordpress-user-ceiling-rep, run: 20261013T014046Z-wordpress-c48c2d, stages: [triage], repeat: 2, env: {SHARED_ORACLE: "on"}}
+  - {name: cacti-user-ceiling-rep,     run: 20261013T044218Z-cacti-705417,     stages: [triage], repeat: 2, env: {SHARED_ORACLE: "on"}}
+  - {name: gitea-user-ceiling-rep,     run: 20261013T061039Z-gitea-2865f0,     stages: [triage], repeat: 2, env: {SHARED_ORACLE: "on"}}
+
+  # == G7 · context, triage-only on the G1 blind reference scan ([triage] x3) =
+  - {name: grafana-user-blind-codenone,   run: 20261012T145740Z-grafana-853739,   stages: [triage], repeat: 3, env: {TRIAGE_CODE_CONTEXT: none}}
+  - {name: wordpress-user-blind-codenone, run: 20261012T163157Z-wordpress-ee000d, stages: [triage], repeat: 3, env: {TRIAGE_CODE_CONTEXT: none}}
+  - {name: cacti-user-blind-codenone,     run: 20261012T185327Z-cacti-f049d3,     stages: [triage], repeat: 3, env: {TRIAGE_CODE_CONTEXT: none}}
+  - {name: gitea-user-blind-codenone,     run: 20261012T211124Z-gitea-2865f0,     stages: [triage], repeat: 3, env: {TRIAGE_CODE_CONTEXT: none}}
+  - {name: grafana-user-blind-peernone,   run: 20261012T145740Z-grafana-853739,   stages: [triage], repeat: 3, env: {TRIAGE_PEER_CONTEXT: none}}
+  - {name: wordpress-user-blind-peernone, run: 20261012T163157Z-wordpress-ee000d, stages: [triage], repeat: 3, env: {TRIAGE_PEER_CONTEXT: none}}
+  - {name: cacti-user-blind-peernone,     run: 20261012T185327Z-cacti-f049d3,     stages: [triage], repeat: 3, env: {TRIAGE_PEER_CONTEXT: none}}
+  - {name: gitea-user-blind-peernone,     run: 20261012T211124Z-gitea-2865f0,     stages: [triage], repeat: 3, env: {TRIAGE_PEER_CONTEXT: none}}

@@ -1,0 +1,71 @@
+# RESCAN · G6 — verification configurations (vdet / vdef).
+# Frozen rescan of 2026-11-03 (NEXT_SESSION §6, thesis docs/RERUN-PLAN.md §6).
+#
+#   uv run dast harness config/harness/rerun-g6-verify-configs.yml   # the USER runs this
+#
+# WHAT THIS IS. Re-verify each target's G1 admin-blind triage under the two verify
+# configs, to compare the one remaining axis (invocation) on ONE set of findings:
+#   * vdet — VERIFY_INVOCATION deterministic (the free, no-key control arm);
+#   * vdef — the default hybrid (table tool choice, llm invocation).
+# `stages: [verify]`, attaching to the G1 scan via `run:` (no re-scan).
+#
+# The third config this sheet used to carry — vllm, the model also picking the
+# tool — was dropped 2026-11-02 when the llm tool-choice axis was removed; tool
+# choice is now always the deterministic table, so vdef is the only llm config.
+#
+# ============================ TARGET-STATE CAVEAT ============================
+# A verify stage PROBES THE LIVE TARGET (it dispatches nuclei/sqlmap/ffuf at the
+# findings' URLs). `--reset-target` acts ONLY on the scan stage
+# (scan/pipeline.py), so a deferred verify does NOT reset — it probes whatever
+# state the target is in at verify time. For this comparison to be fair and
+# reproducible, all three configs must see the SAME target state:
+#
+#   BEFORE running this sheet, reset each target to its clean seeded snapshot
+#   once, and do NOT scan it while the sheet runs:
+#       ./Targets/grafana/env/reset.sh ; ./Targets/wordpress/env/reset.sh
+#       ./Targets/cacti/env/reset.sh   ; ./Targets/gitea/env/reset.sh
+#
+# The clean seeded snapshot IS the state each G1 scan started from
+# (SCAN_RESET_TARGET on), and every marker is seeded, so a reset-clean target
+# reproduces the findings' sinks. These rows are blind (oracle + OOB off), so no
+# RCE and no meaningful target mutation across the configs — the reset-once-then-
+# don't-scan discipline keeps the three configs comparable. Do NOT reset between
+# this sheet's rows.
+# ============================================================================
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 150
+  env:
+    # freeze commit: rerun-2026-11-03f
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "20"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "150"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: admin
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == vdet — deterministic invocation (free control arm), repeat 2 ==========
+  - {name: grafana-admin-blind-vdet,   run: 20261104T021051Z-grafana-8026ee,   stages: [verify], repeat: 2, env: {VERIFY_INVOCATION: deterministic}}
+  - {name: wordpress-admin-blind-vdet, run: 20261104T050403Z-wordpress-035a7a, stages: [verify], repeat: 2, env: {VERIFY_INVOCATION: deterministic}}
+  - {name: cacti-admin-blind-vdet,     run: 20261104T180821Z-cacti-70ad1b,     stages: [verify], repeat: 2, env: {VERIFY_INVOCATION: deterministic}}
+  - {name: gitea-admin-blind-vdet,     run: 20261104T152843Z-gitea-0614b6,     stages: [verify], repeat: 2, env: {VERIFY_INVOCATION: deterministic}}
+
+  # == vdef — the default hybrid (table tool choice, llm invocation), repeat 2 ==
+  - {name: grafana-admin-blind-vdef,   run: 20261104T021051Z-grafana-8026ee,   stages: [verify], repeat: 2, env: {VERIFY_INVOCATION: llm}}
+  - {name: wordpress-admin-blind-vdef, run: 20261104T050403Z-wordpress-035a7a, stages: [verify], repeat: 2, env: {VERIFY_INVOCATION: llm}}
+  - {name: cacti-admin-blind-vdef,     run: 20261104T180821Z-cacti-70ad1b,     stages: [verify], repeat: 2, env: {VERIFY_INVOCATION: llm}}
+  - {name: gitea-admin-blind-vdef,     run: 20261104T152843Z-gitea-0614b6,     stages: [verify], repeat: 2, env: {VERIFY_INVOCATION: llm}}

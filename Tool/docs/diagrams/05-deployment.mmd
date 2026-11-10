@@ -1,0 +1,50 @@
+%% Three compose stacks, independent lifecycles, on one external Docker network.
+%% The persistent/ephemeral split is load-bearing for the CI/CD argument.
+%% The orchestrator and the MCP wrappers run on the host; every other tool is a single-use container.
+flowchart LR
+    subgraph host["host"]
+        direction TB
+        dast["dast<br/>(orchestrator)"]
+        wrappers["MCP wrappers"]
+        source["target source<br/>clone"]
+    end
+    subgraph offnet["single-use, off dast-net"]
+        direction TB
+        noir["Noir<br/>scan stage"]
+        ctags["Ctags<br/>triage, verify"]
+    end
+    subgraph net["external Docker network: dast-net"]
+        direction LR
+        subgraph ephemeral["ephemeral: scan job"]
+            direction TB
+            zap["ZAP daemon<br/>(-Xmx8g)<br/>restarted<br/>per scan"]
+        end
+        subgraph oneshot["single-use, one container per call"]
+            direction TB
+            curl["curl: login"]
+            tools["verification<br/>tools: nuclei<br/>sqlmap, ffuf<br/>browser"]
+        end
+        subgraph persistent["persistent: targets"]
+            direction TB
+            g["gitea"]
+            w["wordpress + mariadb"]
+            gf["grafana"]
+            c["cacti + mariadb"]
+        end
+        subgraph oob["persistent: out-of-band sink (--oob)"]
+            direction TB
+            resolver["split-horizon resolver<br/>(CoreDNS)"]
+            interactsh["interactsh server<br/>(self-hosted)"]
+        end
+    end
+    dast -->|"stdio"| wrappers
+    dast -->|"docker run"| offnet
+    source -.->|"read-only mount"| offnet
+    dast -->|"REST over loopback"| zap
+    dast -->|"docker run"| curl
+    wrappers -->|"docker run"| tools
+    zap -->|"HTTP by container name"| persistent
+    curl -->|"login"| persistent
+    tools -->|"probe"| persistent
+    c -->|"callback"| oob
+    tools -->|"poll"| interactsh

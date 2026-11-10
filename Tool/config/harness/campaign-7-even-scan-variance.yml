@@ -1,0 +1,100 @@
+# CAMPAIGN · BLOCK 7 · gitea clean-run variance — COMPLETES the even spread set
+# (RUN-PLAN §10 follow-up). ONE target, FULL chain — see below.
+#
+#   uv run dast harness config/harness/campaign-7-even-scan-variance.yml --dry-run
+#   uv run dast harness config/harness/campaign-7-even-scan-variance.yml
+#
+# WHY ONLY GITEA. The analyzer's §10 spread views (dast_analyzer/spread.py) want
+# an EVEN n per target. Block 6 ALREADY gives that for grafana / wordpress /
+# cacti: each has a blind reference sample of 7+ full-pipeline runs on a
+# persistent target whose bands were tight, and NOTHING in the pipeline has moved
+# for them since. Redaction is a write-time transform already back-applied to the
+# stored JSON — it blanks cookie/password values, it does NOT change alert
+# counts, claim/verify counts or timing (the spread metrics). --reset-target is
+# gitea-only. So re-running those three would burn time and model budget
+# reproducing data we already trust — we DON'T. The minimal set is the one target
+# whose data is actually invalid.
+#
+# WHY THE FULL CHAIN (not scan-only). spread.py draws from EVERY stage:
+# scan_alert_spread (scan alerts), stage_count_spread (triage claims + verify
+# refuted/confirmed), stage_time + total_time_spread (all stages summed), and
+# declutter_funnel (the blind report.md). A scan-only gitea run would be absent
+# from four of the five figures, so it would not be an even member. gitea
+# therefore runs scan -> triage -> verify -> report, under the SAME triage/verify
+# config block 6 used, so its clean band is comparable to the others'.
+#
+# WHY GITEA IS RESET. Its block-6 blind "variance" was CONTAMINATION, not scanner
+# nondeterminism: the persistent instance accumulated issues/PRs + the scanner's
+# own repo copy that prior authenticated scans created, so the tree grew
+# 900 -> 5251 URLs across runs while seeding stayed constant at 509. That band
+# measures accumulation, so it cannot stand beside the other three. Here gitea is
+# re-run with --reset-target (SCAN_RESET_TARGET=on): each scan restores the clean,
+# freshly-seeded snapshot first, so the band is the SCANNER's own variance. The
+# reset runs carry reset_target in their config digest -> their own clean group;
+# they never mix with the old contaminated gitea runs, which we KEEP (the growth
+# is itself the persistent-/staging-target contamination finding, reported on its
+# own).
+#
+# n = 7 to match block 6's even floor; the analyzer reports all four targets'
+# spread at that common n (trimming the richer grafana/wordpress groups to match).
+# Raise `repeat` for a tighter gitea band — the figure stays even as long as the
+# analyzer bins at the common floor.
+#
+# PREREQUISITE (gitea): capture the clean snapshot ONCE from a freshly-seeded
+# gitea, or every reset row fails fast:
+#   ./Targets/gitea/env/seed-users.sh && ./Targets/gitea/env/seed-repo.sh
+#   ./Targets/gitea/env/reset.sh --snapshot
+#
+# COST / TIME. 7 full-pipeline gitea runs. gitea triage/verify is the cheap end
+# of the corpus and the reset tree is small (clean 509 + spider), so expect a few
+# $ total — the ceiling below is a tripwire, and remember it sums NEW spend across
+# the whole data tree since the sheet started. Env fragility from block 6 still
+# applies (prune the Docker VM disk between sets).
+#
+# NOT the frozen corpus — a §10 follow-up at the current commit; the new runs
+# carry their own ids. Blind only (SHARED_ORACLE off): a ceiling is never a
+# detection number, and the even spread is a blind-surface characterisation.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 5.0         # tripwire; ~a few $ expected. Sums NEW tree spend since start.
+  timeout_minutes: 240
+  env:
+    # Triage/verify config MIRRORS campaign-6 so the gitea clean band is
+    # comparable to the other three targets' block-6 full-pipeline bands.
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""          # preference-routed, served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""             # preference-routed (like synthesis): friendli dropped this model 2026-10-23, and pinning ANY provider disables require_parameters, so OpenRouter must stay free to pick a json_schema-capable one; served provider recorded per call
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+# gitea on a CLEAN instance per scan (--reset-target): the band is the scanner's
+# own nondeterminism, not the issues/PRs/repo-copy prior authenticated scans left
+# behind. Auth = user (the block-6 surface). Full deliverable chain, so every
+# spread figure has gitea at the common n. `repeat: 7` mints 7 fresh run ids.
+rows:
+  # name is <target>-<auth>-<role> so the analyzer parses role=blind; the reset
+  # is carried by SCAN_RESET_TARGET + the config digest, not the row name.
+  - {name: gitea-user-blind, target: gitea, stages: [scan, triage, verify, report], repeat: 7, env: {SHARED_AUTH_MODE: user, SCAN_RESET_TARGET: "on"}}

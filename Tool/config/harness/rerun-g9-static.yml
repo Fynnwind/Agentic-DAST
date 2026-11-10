@@ -1,0 +1,29 @@
+# RESCAN · G9 — standalone SAST + SCA static-analysis findings.
+# Frozen rescan of 2026-11-03 (NEXT_SESSION §6, thesis docs/RERUN-PLAN.md §6).
+#
+#   uv run dast harness config/harness/rerun-g9-static.yml   # the USER runs this
+#
+# WHAT THIS IS. One `dast static-analysis` per target: Semgrep (SAST) + OSV-Scanner
+# (SCA) against the target SOURCE, emitted beside the G1 admin-blind run so the
+# thesis's SAST/SCA-vs-DAST cross-section reads one coherent corpus. NOT a
+# pipeline stage — no scan, no model, no key, no target instance. `static-analysis`
+# takes no out-suffix; the run id names the target.
+#
+# PREREQUISITES: P4 — static-analysis-cache/ populated (the commit-pinned
+# semgrep-rules checkout + the OSV advisory snapshot), else each row fails with
+# the checkout command. Fill each REF-* below with the actual G1 admin-blind run
+# id once G1 has landed (the attach target for the SARIF output).
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 1.0           # no model spend; a safety bound only
+  timeout_minutes: 120
+  env:
+    # freeze commit: rerun-2026-11-03f
+    SHARED_RUN_MAX_COST_USD: "1.0"
+
+rows:
+  - {name: grafana-static,   run: 20261104T021051Z-grafana-8026ee,   stages: [static-analysis]}
+  - {name: wordpress-static, run: 20261104T050403Z-wordpress-035a7a, stages: [static-analysis]}
+  - {name: cacti-static,     run: 20261104T180821Z-cacti-70ad1b,     stages: [static-analysis]}
+  - {name: gitea-static,     run: 20261104T152843Z-gitea-0614b6,     stages: [static-analysis]}

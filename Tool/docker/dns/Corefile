@@ -1,0 +1,20 @@
+# Split-horizon resolver for out-of-band (blind) vulnerability confirmation: a
+# blind vuln only proves itself by making the target call out to the interactsh
+# sink, so the target must resolve *.interactsh.local there without losing its
+# ordinary lookups. → DECISIONS.md.
+#
+# - interactsh.local (+ subdomains) forwards to interactsh's own DNS
+#   (172.19.0.250:53), which records the interaction and answers with the sink IP.
+# - Everything else forwards to Docker's embedded DNS (127.0.0.11), so the target
+#   still resolves its DB, sibling services and external names.
+# - Only the scanned OOB target points its `dns:` here; nuclei is pointed at the
+#   same resolver (--dns) so its callback host is one this resolver answers.
+
+interactsh.local {
+    forward . 172.19.0.250:53
+}
+
+. {
+    forward . 127.0.0.11
+    cache 30
+}

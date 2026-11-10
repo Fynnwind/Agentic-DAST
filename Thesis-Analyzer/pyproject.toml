@@ -1,0 +1,30 @@
+[project]
+name = "dast-analyzer"
+version = "0.1.0"
+description = "Read-only analysis layer: turns the tool's run artifacts into the thesis's tables and figures"
+readme = "README.md"
+requires-python = ">=3.12"
+# Stack fixed by README.md: pandas for the index/joins, matplotlib (pgf backend)
+# for thesis-matched figures, jsonschema to validate artifacts against the
+# vendored contract. It does NOT depend on the tool — it only consumes data/.
+dependencies = [
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+    "jsonschema>=4.26",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+dast-analyze = "dast_analyzer.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dast_analyzer"]

@@ -1,0 +1,16 @@
+%% The four verification outcomes and how a finding reaches one.
+%% resolve_verdict combines the wrapper's reading and the model's; the full
+%% wrapper x model matrix is in docs/OUTCOMES.md.
+stateDiagram-v2
+    [*] --> Selected: triage flags a finding and names a tool
+    Selected --> NotAttempted: no-tool-routed / no-probe-url / tool-cannot-reach-parameter / budget / out-of-scope
+    Selected --> Round: an honest probe URL was built
+    Round --> Round: model asks to refine, within VERIFY_MAX_ROUNDS
+    Round --> Resolve: tool ran to completion
+    Resolve --> Confirmed: wrapper AND model agree it reproduced
+    Resolve --> Refuted: ran, could not reproduce
+    Resolve --> Inconclusive: timed out, errored, refused, or an unbacked model yes, flagged
+    NotAttempted --> [*]
+    Confirmed --> [*]
+    Refuted --> [*]
+    Inconclusive --> [*]

@@ -1,0 +1,137 @@
+# COMPLETE THE CANONICAL BASELINE — run the key-spending stages on the eight
+# scans the first canonical-baseline execution already produced, WITHOUT
+# re-scanning.
+#
+#   uv run dast harness config/harness/complete-baseline.yml --dry-run
+#   uv run dast harness config/harness/complete-baseline.yml
+#
+# WHY THIS EXISTS. The 2026-09-23 canonical-baseline run scanned all eight rows
+# successfully (~4 h) but every `triage` failed at the first LLM call with
+# "Missing Authentication header": the harness handed the stage subprocess no
+# OpenRouter key, because `secret_env` read only the base `.env` and not its
+# `secrets.env` neighbour (fixed same day in dast_harness). The scans are the
+# expensive, stored artifact; this sheet completes them in place rather than
+# paying for four more hours of scanning.
+#
+# HOW IT REUSES THE SCANS. Each row names, with `run:`, the exact stored run id
+# from that execution (they live in data/harness/20260923T152305Z-canonical-
+# baseline/, which `dast harness` searches as an earlier sheet dir), and its
+# stages START at `triage`, so no row mints a new run — `triage` reads the stored
+# scan off disk. The per-row env mirrors canonical-baseline.yml's exactly (same
+# pinned models, prompt versions, context, verification config, per-target auth,
+# and the Cacti-ceiling OOB switches), so the completed corpus is the one the
+# canonical sheet intended.
+#
+#   BLIND rows (oracle off): triage verify report — the promoted corpus.
+#   CEILING rows (oracle on): triage verify — the labelled upper bound, never a
+#   detection number. `SHARED_ORACLE=on` injects the oracle context the seeded
+#   scan was taken with; the discipline in sheet 13's / canonical's headers all
+#   applies.
+#
+# PREREQUISITES: config/scanner/secrets.env holds the key; the four targets and
+# (for the Cacti ceiling) the OOB stack are still up so verify's live probes can
+# reach them; the nuclei template volume is populated. `--dry-run` clean.
+#
+# AFTER IT LANDS: `dast run-index`, then `dast cve <run>` per BLIND row, and
+# promote per canonical-baseline.yml's PROMOTION step (record the four blind run
+# ids in CLAUDE.md's Current status, each ceiling id beside it).
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  # No 45-min scan in any row now; Cacti's ~76-min pass-1 triage + verify is the
+  # worst. Sized for it with headroom.
+  timeout_minutes: 150
+  env:
+    # The settled triage defaults, pinned identically to canonical-baseline.yml.
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    # Verification at the settled hybrid.
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    SHARED_ORACLE: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+
+rows:
+  # ==========================================================================
+  # PHASE 1 — THE BLIND BASELINES (triage verify report), oracle off.
+  # ==========================================================================
+  - name: grafana-baseline
+    run: 20260923T152305Z-grafana-4c733a
+    stages: [triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: admin
+
+  - name: wordpress-baseline
+    run: 20260923T154250Z-wordpress-ee000d
+    stages: [triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: user
+
+  - name: cacti-baseline
+    run: 20260923T162308Z-cacti-a88bcd
+    stages: [triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: none
+
+  - name: gitea-baseline
+    run: 20260923T165613Z-gitea-2865f0
+    stages: [triage, verify, report]
+    env:
+      SHARED_AUTH_MODE: user
+
+  # ==========================================================================
+  # PHASE 2 — THE ORACLE CEILINGS (triage verify), oracle on. Never a detection
+  # number; never in a table beside a blind row.
+  # ==========================================================================
+  - name: grafana-ceiling
+    run: 20260923T172002Z-grafana-3bde4a
+    stages: [triage, verify]
+    env:
+      SHARED_AUTH_MODE: admin
+      SHARED_ORACLE: "on"
+
+  - name: wordpress-ceiling
+    run: 20260923T174313Z-wordpress-c48c2d
+    stages: [triage, verify]
+    env:
+      SHARED_AUTH_MODE: user
+      SHARED_ORACLE: "on"
+
+  # Cacti's ceiling is the flagship: the oracle-seeded scan put the remote_agent
+  # sink in the tree, and VERIFY_OOB lets nuclei confirm CVE-2022-46169 via
+  # interactsh. Needs the OOB stack up and VERIFY_INTERACTSH_SERVER reachable.
+  - name: cacti-ceiling
+    run: 20260923T182731Z-cacti-12fb0e
+    stages: [triage, verify]
+    env:
+      SHARED_AUTH_MODE: none
+      SHARED_ORACLE: "on"
+      VERIFY_OOB: "on"
+      # Wildcard host the split-horizon resolver answers (+ that resolver as DNS),
+      # never the container name `target-interactsh` — see nuclei_server.py.
+      VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+      VERIFY_INTERACTSH_DNS: "172.19.0.252"
+
+  - name: gitea-ceiling
+    run: 20260923T190055Z-gitea-2865f0
+    stages: [triage, verify]
+    env:
+      SHARED_AUTH_MODE: user
+      SHARED_ORACLE: "on"

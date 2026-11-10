@@ -1,0 +1,63 @@
+[project]
+name = "dast-orchestrator"
+version = "0.1.0"
+description = "DAST-in-CI/CD thesis prototype: ZAP driver + (later) AI correlation/verification layer"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "mcp>=2.0.0",
+    "openrouter>=1.1.58",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+# One command, one entry point. Every stage is `dast <stage>`; the pipeline
+# measures (`dast ground-truth`, `dast run-index`) and the unattended front end
+# (`dast harness`) are folded in too, delegated whole in `cli.py`. The thin
+# per-stage aliases (`scan`, `correlate-run`, `verify-run`, `report-run`,
+# `analyze-run`, `harness-run`) and the standalone `run-index` / `ground-truth`
+# were dropped in the CLI pass: two ways to spell one command is one too many,
+# and the stages are still runnable directly as `python -m dast_orchestrator.<m>`
+# (the form the harness itself spawns), so nothing internal depended on them.
+dast = "dast_orchestrator.cli:main"
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.26.0",
+    "pytest>=8.0",
+    "respx>=0.21",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dast_orchestrator", "src/dast_harness"]
+# No `artifacts` entry: target definitions live in `targets/<name>/target.yml` at
+# the repo root, not inside the package, so a built wheel resolves no targets.
+# That is the intended trade — a definition points at a gitignored source clone
+# and a bind-mounted container directory, neither of which ships in a wheel, so
+# shipping the YAML only hid where a target really lives.
+
+[tool.uv]
+# Reproducible, brew-INDEPENDENT interpreter. `.python-version` pins the exact
+# patch (3.12.14) and `only-managed` makes uv use its own downloaded standalone
+# for that version, never a system/Homebrew python. Without this the venv was a
+# symlink to `/opt/homebrew/opt/python@3.12`, so a `brew upgrade` silently moved
+# the interpreter's patch version under the tool and a `brew cleanup` would break
+# the venv (found 2026-09-15). The measurements run in pinned Docker containers
+# regardless; this pins the orchestration interpreter to match.
+python-preference = "only-managed"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The e2e tier needs Docker, the target stack and the pinned images, and is slow
+# enough that nobody would run the suite if it were included. `uv run pytest`
+# stays fast and hermetic; `uv run pytest -m e2e` runs it against live
+# containers. See tests/conftest.py for what each tier may touch.
+addopts = "-m 'not e2e'"
+markers = [
+    "e2e: needs live containers (Docker, the target stack, the pinned tool images)",
+]

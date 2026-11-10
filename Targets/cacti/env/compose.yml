@@ -1,0 +1,111 @@
+# The Cacti 1.2.22 target's own services — the web app and its database. Pulled
+# into the persistent stack by `include:` in stacks/persistent.yml, which is what
+# keeps adding a target to one new directory plus one include line.
+#
+# `include:` (not `-f a.yml -f b.yml`) on purpose: with include, every relative
+# path below resolves against THIS file's directory, so `./data` means
+# targets/cacti/env/data. Passing two -f files instead would resolve both against
+# the FIRST file's directory, silently pointing these bind mounts elsewhere.
+#
+# Cacti is the FOURTH target and the first chosen for the CONFIRMATION axis: its
+# flagship CVE (CVE-2022-46169, unauthenticated OS command injection in
+# remote_agent.php, CVSS 9.8) is BLIND — no command output returns in the
+# response — so it can only be *confirmed* out of band, via the self-hosted
+# interactsh sink. That is the point of the target, and the reason the split-
+# horizon DNS resolver in the persistent stack exists. See cve-markers.yml.
+#
+# The web image is BUILT, not pulled (Targets/cacti/image/Dockerfile): no arm64 build of
+# Cacti 1.2.22 is published by anyone, so an arm64-native image is assembled from
+# a pinned PHP base + the source pinned to release/1.2.22's commit. Build it once
+# before `compose up`:
+#     docker build --platform linux/arm64 -t dast-cacti:1.2.22 Targets/cacti/image
+
+services:
+  cacti-db:
+    # MariaDB 10.6 LTS, arm64-native, the same pin WordPress uses. Cacti needs a
+    # few non-default server settings or its own installer flags them and some
+    # pages misbehave; the ones that matter are set in `command:` below rather
+    # than left to a warning the operator never sees.
+    # Pinned by digest (rescan freeze 2026-10-26); `docker images --digests mariadb`.
+    image: mariadb:10.6.22@sha256:7589b386fa6686a5d5f131b504ed21c81e492c48b78c6c4be0d5be1066542559
+    container_name: target-cacti-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: dast-root
+      MARIADB_DATABASE: cacti
+      MARIADB_USER: cacti
+      MARIADB_PASSWORD: dast-cacti
+    # Cacti's DB requirements (checked by its installer, lib/installer.php):
+    # utf8mb4 throughout, a large heap/tmp table size for its poller tables, and
+    # a generous packet size. innodb_flush_log_at_trx_commit=2 is Cacti's own
+    # recommendation for a monitoring workload. These silence the install checks
+    # and are the documented Cacti values, not tuning guesswork.
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max_heap_table_size=128M
+      - --tmp_table_size=64M
+      - --join_buffer_size=64M
+      - --innodb_buffer_pool_size=512M
+      - --innodb_doublewrite=ON
+      - --innodb_flush_log_at_trx_commit=2
+      - --innodb_file_per_table=ON
+      - --max_allowed_packet=32M
+    volumes:
+      # This target's database state, beside its definition and seed script.
+      - ./data/db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pdast-root"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - dast-net
+
+  cacti:
+    # Built locally, arm64-native, pinned (see Targets/cacti/image/Dockerfile). NOT a
+    # pulled image — the build is the pin, so there is no registry digest to add.
+    # Rescan freeze 2026-10-26: image id on the freeze host is
+    # sha256:e0072c09667f (docker images --no-trunc dast-cacti:1.2.22); keep this
+    # built image as-is for the rescan rather than rebuilding under the data.
+    image: dast-cacti:1.2.22
+    container_name: target-cacti
+    restart: unless-stopped
+    depends_on:
+      cacti-db:
+        condition: service_healthy
+    environment:
+      # The entrypoint renders include/config.php from these, so no credential is
+      # baked into the image. TEST-ONLY, fixed and public on purpose: the target
+      # is loopback-bound and deliberately vulnerable, and every run must connect
+      # identically.
+      DB_HOST: target-cacti-db
+      DB_PORT: "3306"
+      DB_NAME: cacti
+      DB_USER: cacti
+      DB_PASS: dast-cacti
+      URL_PATH: /
+    # The split-horizon resolver (stacks/dns/Corefile), so an out-of-band
+    # callback fired by the command-injection payload can resolve
+    # <id>.interactsh.local to the interactsh sink AND ordinary names (the DB
+    # host, external lookups) still resolve. ONLY this OOB target points its DNS
+    # here — the other three targets are untouched, so their runs are unchanged.
+    dns:
+      - 172.19.0.252
+    volumes:
+      # Cacti's RRD files and logs (its writable state) live beside the target
+      # definition, so a scan does not accumulate inside the container layer.
+      - ./data/rra:/var/www/html/rra
+      - ./data/log:/var/www/html/log
+    # Loopback-bound: the scan path is container-to-container over dast-net (ZAP
+    # reaches Cacti by name), so publishing to all interfaces would only expose a
+    # deliberately-vulnerable target to the LAN. 8003 on the host (the targets share a
+    # memorable 8000-8003 block); inside the container it is Apache's 80, which base_url names.
+    ports:
+      - "127.0.0.1:8003:80"
+    networks:
+      - dast-net
+
+networks:
+  dast-net:
+    external: true

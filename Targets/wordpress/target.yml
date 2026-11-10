@@ -1,0 +1,208 @@
+# The WordPress 5.8.0 + WP Download Manager 3.2.33 target — every
+# WordPress-specific value the pipeline needs. The SECOND target, and the first
+# in a language other than Go: see docs/DECISIONS.md "The second target" for why
+# this pin, and for what its PHP source cost the code-context machinery.
+#
+# A new target is a sibling DIRECTORY like this one — target.yml, src/, env/ —
+# plus one `include:` line in stacks/persistent.yml; no Python is edited. The
+# one thing WordPress's PHP forced was a fix to the GENERIC extractor (ctags
+# emits no scope-end for PHP), not a branch on the target name — the design's
+# own rule, honoured.
+#
+# The seeded credentials match env/seed-users.sh next door and are TEST-ONLY for
+# the loopback-bound, deliberately-vulnerable local target — fixed and public on
+# purpose so every run authenticates identically.
+
+name: wordpress
+
+# URL ZAP and the verification tools reach the target at — the container name on
+# dast-net, not localhost (they run inside their own containers). It MUST be the
+# container name for WordPress specifically: WordPress canonical-redirects any
+# request whose Host disagrees with its configured site URL, so a scan aimed at
+# localhost would collect redirects instead of pages (see env/compose.yml).
+base_url: http://target-wordpress
+
+# Source tree Noir analyses and the SAST baseline reads, relative to the repo
+# root. This is the PLUGIN, not WordPress core, and that is a deliberate scoping
+# decision recorded in docs/DECISIONS.md: every marker under study lives in the
+# plugin, WordPress core's request routing is query-var/hook dispatch that Noir
+# does not model as endpoints, and pinning core as source would bury the plugin
+# under thousands of noise files. Reproduced from the pinned, hash-verified zip:
+#   see targets/wordpress/env/seed-site.sh (PLUGIN_SHA256) — the same artifact
+#   that is installed into the running target, unzipped as this directory.
+source_dir: src
+
+# Values substituted into route-template placeholders so a seed is fetchable.
+# WordPress's own routes are largely query-string (?page_id=, ?p=), so Noir
+# emits few templated paths; these cover the plugin's REST namespace
+# (/wp-json/wpdm/...) and admin-ajax action ids. An unknown placeholder falls
+# back to "1" in noir_runner.substitute_path.
+path_vars:
+  id: "4"            # the seeded public package (seed-content.sh)
+  slug: dast-public-package
+  action: list
+  term: demo
+  category: demo
+  page: "1"
+  format: json
+
+# Benign values for WordPress/WPDM form fields, so a reconstructed POST body
+# submits the flagged parameter inside a plausible form. The login fields match
+# the wp-login.php form and the seeded accounts.
+form_fillers:
+  log: dastuser
+  pwd: "DastUserPass123!"
+  user_login: dastuser
+  redirect_to: /
+  skw: test
+  search: test
+  s: test
+  email: dastuser@example.com
+  wpdmloginform: "1"
+
+# WordPress's form login: wp-login.php takes `log`/`pwd`, sets a
+# `wordpress_logged_in_*` cookie on success, and the admin bar's `Log Out` link
+# is present only when authenticated. `strategy: form` is the built-in CSRF-form
+# mechanism (see auth.py) — wp-login.php carries no CSRF token on the POST, so
+# `csrf_field` is empty and the flow degrades to a plain credential POST, which
+# is exactly what WordPress expects.
+#
+# NOTE the session cookie is matched by PREFIX: WordPress names it
+# `wordpress_logged_in_<hash>` where the hash depends on the site URL, so the
+# literal name is not knowable ahead of time. auth.py reads the jar by the
+# `session_cookie` substring, so the prefix is what belongs here.
+auth:
+  strategy: form
+  login_path: /wp-login.php
+  csrf_field: ""
+  # wp-login.php's own field names — not Gitea's user_name/password. wp-submit is
+  # required or WordPress does not process the POST; the test cookie WordPress
+  # sets on the GET is carried by the shared cookie jar (see auth.py).
+  username_field: log
+  password_field: pwd
+  extra_login_fields:
+    wp-submit: "Log In"
+  session_cookie: wordpress_logged_in_
+  logged_in_indicator: "Log Out"
+  # The dashboard, not the front page: wp-admin always shows the admin bar to a
+  # logged-in account of any role, while the front page's bar is a user setting and
+  # its content a crawl can change.
+  logged_in_check_path: /wp-admin/
+  # The scan never requests these (see AuthProfile.logout_markers): the admin bar's
+  # `wp-login.php?action=logout&_wpnonce=…` carries a valid nonce, and the spider
+  # following it ended the session 3 s into a scan. WPDM has its own logout,
+  # `/?logout=<nonce>` (wpdm_logout_url → wp_logout); the spider followed it and ended
+  # the session in the full-length live check of 2026-11-03.
+  logout_markers: ["action=logout", "logout="]
+  # What the logged-in spider wrecked in the 2026-11-03 live check, kept out of the scan
+  # (see AuthProfile.destructive_markers): the account (profile, user edits, user
+  # actions; the admin's password stopped working), the site (customizer, plugin and
+  # theme editors, installs, updates, options, WPDM's settings), and the marker
+  # fixtures (trash/delete links trashed 6 pages and 4 packages; post saves). WPDM's own
+  # edit-profile form sets the password when its two password fields match, which a
+  # crawl filling both with one value does; its nonce field is the body marker.
+  destructive_markers: ["profile.php", "user-edit.php", "users.php", "customize.php",
+                        "plugin-editor.php", "theme-editor.php", "plugins.php",
+                        "plugin-install.php", "theme-install.php", "update.php",
+                        "update-core.php", "/wp-admin/options", "page=settings",
+                        "erase-personal-data.php", "action=trash", "action=delete",
+                        "action=activate", "action=deactivate", "body:action=editpost",
+                        "body:__wpdm_epnonce"]
+  users:
+    - { role: user,  username: dastuser,  password: DastUserPass123! }
+    - { role: admin, username: dastadmin, password: DastAdminPass123! }
+
+# The independent SAST/SCA static-analysis findings (`dast analyze`), which read `source_dir`
+# above. Not part of the DAST chain — no correlation, no verification, no model.
+# The plugin is PHP with a JavaScript/jQuery frontend; both language sets run.
+# OSV-Scanner needs no configuration, but note the plugin ships no dependency
+# manifest (no composer.json), so the SCA baseline finds nothing here — itself a
+# fact worth having beside Gitea's dense go.mod.
+source_analysis:
+  semgrep_rulesets:
+    - php
+    - javascript
+
+# Where this target's handlers live, for the scoped code extractor that resolves
+# an endpoint's handler to actual source (universal-ctags). Noir names no
+# `callees` for WordPress's hook/REST routes, so the handler is the callable the
+# endpoint's own `add_action` / `register_rest_route` call names, read by the
+# tool's registration resolver (context/dispatch.py, keyed on Noir's
+# `php_wordpress` technology — nothing here names this target).
+#
+# `src` — the plugin's PSR-4 class tree — and no wider. The plugin root also
+# holds download-manager.php (the bootstrap) and view templates; the class tree
+# under src/ is where the AJAX/REST handlers Noir routes to actually live.
+#
+# `kinds.PHP: f` is functions AND methods: universal-ctags tags a PHP method as
+# kind `function` with a `class:` scope, not a distinct `m`, so `f` alone
+# captures both — the analogue of Go's `f`.
+#
+# What this cost, measured and recorded in docs/DECISIONS.md: the PHP ctags
+# parser emits neither `end:` (scope end) nor `package:`. The missing end was
+# fatal until the generic extractor learned to backfill an extent
+# (code_context.backfill_extents). In place of `package:` the PHP parser emits
+# the method's `class:` scope, so PHP calls resolve by PHP's own receiver rules
+# (`$this->`/`self::` same class, `X::` through the file's `use` imports) and an
+# ambiguous name resolves to nothing. The reachable XSS markers themselves live in view TEMPLATES, which
+# are neither Noir endpoints nor ctags symbols, so code context serves the
+# AJAX/REST handler surface, not those markers — a stated limitation.
+code_context:
+  scope:
+    - src
+  languages:
+    - PHP
+  kinds:
+    PHP: f
+
+# Noir technology classifications to drop for this target. The framework-blind
+# PHP tagger emits `php_pure` — one "endpoint" per .php file — for every source
+# file under src/, none of which WordPress serves as a URL. Measured: they were
+# 197 of 287 extracted endpoints, inflating the scan tree and starving the
+# active scanner. Dropping them leaves the 90 real routes Noir tags
+# `php_wordpress` (admin-ajax actions, wp-json REST). Per-target, not global: a
+# framework-less PHP app whose .php files ARE routable would keep them.
+noir_ignore_technologies:
+  - php_pure
+
+# Reachability seeds for sinks no crawler discovers now live ON their CVE
+# marker (cve-markers.yml `seed:`) and are seeded ONLY under a scan's --oracle
+# (ceiling) mode — a seed chosen because we know the CVE is there is oracle
+# knowledge, so a blind run never gets it. The frameid shortcode-iframe surface
+# (?__wpdmxp=1) moved to the wpdm-frameid-reflected-xss marker's `seed:`.
+
+# Crawlers for this target. WordPress's admin surface is JS-driven and the
+# traditional spider — which parses HTML and never executes it — sees 223 mostly
+# static pages, of which only ~15 come from seeding because Noir's 90 endpoints
+# are nearly all `admin-ajax.php?action=<name>`: one path, many query values,
+# which ZAP collapses into a single site-tree node.
+#
+# `client` is ZAP's own recommendation for modern apps since 2026 and drives a
+# real browser. `traditional` stays first and stays present: it produced every
+# recorded coverage number on this target, so removing it would move that
+# baseline rather than add to it, and running it first means the browser crawler
+# starts from a populated tree.
+spiders:
+  - traditional
+  - client
+
+# ZAP context settings. The REST path set NO context at all before 2026-09-05,
+# which is why this block is new rather than merely unset.
+#
+# `action` is what routes this application. WordPress funnels ~90 of the
+# plugin's endpoints through one PHP file, /wp-admin/admin-ajax.php, and
+# distinguishes them ONLY by `?action=<name>`. ZAP builds its site tree from
+# paths, so all ninety are one node: measured, 91 seeded requests collapse into
+# 15 URLs, and the active scanner then attacks one endpoint where the
+# application has ninety. Declaring `action` structural makes each value its own
+# node — confirmed on the live daemon, three requests differing only in `action`
+# give one node without it and three with it.
+#
+# This CHANGES WHAT A SCAN CONTAINS. It is in the run's configuration digest,
+# and a run carrying it is not comparable with one that does not — adopting it
+# invalidates this target's earlier baseline for cross-comparison, which is a
+# deliberate re-baseline rather than a side effect. See
+# src/dast_orchestrator/zap_context.py.
+zap_context:
+  structural_parameters:
+    - action

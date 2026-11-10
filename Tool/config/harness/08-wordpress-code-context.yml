@@ -1,0 +1,153 @@
+# Optimisation pass 8 — does code context still earn its place on a target where
+# it grounds only a sixth of the endpoints?
+#
+#   *** VOID. DO NOT RUN THIS SHEET. Its treatment arm is empty. ***
+#
+# Established 2026-09-04, and kept on disk for the same reason sheet 03 is: the
+# question was real, the sheet was wrong, and deleting it would leave the
+# directory implying an open question that is closed.
+#
+# THE PREMISE WAS AN ARTEFACT OF THE MEASUREMENT
+#
+#   The header below says code context grounds "17% (51/287)" of WordPress's
+#   endpoints. That count was taken over a Noir extraction that included 197
+#   file-as-endpoint pseudo-endpoints on `/src/….php` paths the running install
+#   404s — so the 17% was grounding on endpoints the scanner can never reach,
+#   and it was never a sixth of anything real.
+#
+#   `noir_ignore_technologies: [php_pure]` dropped those 197, and every one of
+#   the 126 callee-bearing endpoints was among them. Measured on the current
+#   corpus (`20260904T021634Z-wordpress-8520fa`, 90 endpoints):
+#
+#     corpus                            endpoints   endpoints with callees
+#     gitea 2026-09-03                        354                      354
+#     wordpress pre-filter                    287                      126
+#     wordpress post-filter                    90                        0
+#
+#   That second column IS the grounding rate: `code_context.build_context`
+#   roots on the callees Noir names and returns `None` when there are none, so
+#   an endpoint with no callees carries no `handler_source` block at any level.
+#   On this corpus `TRIAGE_CODE_CONTEXT=handler+trace` therefore
+#   produces byte-for-byte what `TRIAGE_CODE_CONTEXT=none` produces. The sheet would
+#   compare `none` against `none`, spend ~$0.3 doing it six times, and return a
+#   null result for a mechanical reason dressed as a scientific one.
+#
+#   Note what is NOT the problem: the 11 files those 90 endpoints name all exist
+#   in `targets/wordpress/src`. The index can read them. Nothing points at them,
+#   because the roots are callees and Noir extracts none for the admin-ajax
+#   routes that survive the filter.
+#
+# WHAT REPLACES IT
+#
+#   The honest question — *what does source grounding require of a target, and
+#   what does its absence cost?* — is answered by the table above plus sheet 07,
+#   and it needs no sheet. The requirement is now stated precisely: **Noir must
+#   name callees for the endpoint**, which it does for 100% of Gitea's Go routes
+#   and 0% of WordPress's surviving PHP ones. The cost of its absence is
+#   sheet 07's measured effect not being available on WordPress at all — the
+#   source-grounded false-positive suppression that moved `both` 23→17→14 and
+#   `det-only` 11→16→20 on Gitea has no mechanism to operate through here.
+#
+#   That belongs in the cross-target table, assembled from run artifacts at
+#   writing time (NEXT_SESSION §4), not in a harness row.
+#
+#   Re-opening this needs a change to what is extracted, not to what is
+#   measured: rooting on the route-definition symbol when the callee list is
+#   empty would give WordPress a treatment arm. That is a feature, it is
+#   unbuilt, and it must not be built to rescue a sheet.
+#
+# ---------------------------------------------------------------------------
+# THE SHEET AS WRITTEN, 2026-09-02, PRESERVED BELOW
+# ---------------------------------------------------------------------------
+#
+# Optimisation pass 8 — does code context still earn its place on a target where
+# it grounds only a sixth of the endpoints?
+#
+#   uv run dast harness config/harness/08-wordpress-code-context.yml
+#
+# ~2-4 h, ~$0.2-0.5. Two rows, one stored corpus, repeat 3. The WordPress
+# counterpart to sheet 07, and the first cross-target question this project can
+# ask — so it is deliberately the SAME question sheet 07 answered for Gitea, held
+# to the same shape, changed only in the target.
+#
+# PRECONDITION: the corpus named in `run:` must carry `zap-messages.json`, and
+# `uv run dast triage <run> --dry-run` must build a prompt at both TRIAGE_CODE_CONTEXT
+# levels. The 20260902 WordPress run below satisfies this.
+#
+# ---------------------------------------------------------------------------
+# THE QUESTION
+#
+#   Sheet 07 measured, on Gitea, that code context's value is false-positive
+#   SUPPRESSION grounded in the handler's source — and it grounded 94% of Gitea's
+#   endpoints (332/354). On WordPress the SAME extractor resolves only 17%
+#   (51/287): the PHP handlers call mostly outward into a WordPress core the
+#   plugin-scoped index does not hold, and the reachable XSS sinks live in view
+#   templates that are neither Noir endpoints nor ctags symbols (see
+#   DECISIONS.md "The second target, brought up").
+#
+#   So the question is not "does code context help" — sheet 07 answered that —
+#   but "does the SAME mechanism still earn its place when it grounds a sixth as
+#   many endpoints, or does its value fall away with the resolution rate?" Either
+#   answer is a cross-target result: it either generalises the source-grounded
+#   refutation finding beyond Go, or bounds it to targets whose handler tree is
+#   as self-contained as Gitea's.
+#
+#     none        evidence pack present, no handler source — the A/B BASELINE
+#     handler+trace  the resolved handler + one hop + the call chain and the
+#                 parameter's literal sites (the default)
+#
+# HOW TO READ IT — the same discipline as sheet 07, do NOT stop at line 1:
+#
+#   1. agreement.deterministic-only — the FP-suppression signal. On this corpus
+#      the deterministic arm flags 28 SQLi + 1 traversal High findings that are
+#      almost all false positives (ZAP over-flagged `permalink`, `__phash`,
+#      `wpdm_login[pwd]=... OR 1=1`). Does handler+trace let the model refute more of
+#      them than `none` does, as it did on Gitea?
+#   2. THE REASONING TEXT of every refutation. A refutation whose reasoning cites
+#      no file:line of the included handler is not source-grounded, whatever the
+#      counter says — and with only 51/205 endpoints carrying source, many
+#      refutations here CANNOT be grounded and must be read as the weaker
+#      "reasoned without code" class. Separate the two by hand.
+#   3. llm_rescans overall — a rise is the gaming signal, not a win.
+#   4. Detection of the CVE markers (uv run ground-truth assess <run>) — the only
+#      correctness measure. Note the active scan behind this corpus was
+#      cap-limited and did not reach the two reachable XSS markers, so ZAP
+#      detection of them is 0 for a SCAN-BUDGET reason, not a triage one; read the
+#      refutation column, not the detection column, from this corpus.
+#
+# GUARDRAILS that must not regress: llm_findings_unanswered ~1, self-consistency
+# contradictions 0-2, cost per run.
+#
+#   IF handler+trace does NOT out-refute `none` here while it did on Gitea, the
+#   finding is that source-grounded refutation needs a self-contained handler
+#   tree, which PHP-into-WordPress-core is not — a bound on the central result,
+#   and exactly the kind of thing a second target exists to establish.
+# ---------------------------------------------------------------------------
+
+defaults:
+  target: wordpress
+  base_env: config/scanner/.env
+  max_cost_usd: 2.0
+  env:
+    SHARED_AUTH_MODE: none
+    TRIAGE_PEER_CONTEXT: full           # held; the variable is TRIAGE_CODE_CONTEXT
+    TRIAGE_HTTP_CONTEXT: balanced          # held; the evidence pack is constant
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_REPEATS: "1"            # held so the triage prompt is the only variable
+
+rows:
+  # Corpus: 20260902T005223Z-wordpress-126ce4 — has zap-messages.json; active
+  # scan cap-limited (read refutation, not detection — see the header).
+  - name: ctx-none
+    stages: [triage]
+    run: 20260902T005223Z-wordpress-126ce4
+    repeat: 3
+    env:
+      TRIAGE_CODE_CONTEXT: none
+  - name: ctx-source-nav
+    stages: [triage]
+    run: 20260902T005223Z-wordpress-126ce4
+    repeat: 3
+    env:
+      TRIAGE_CODE_CONTEXT: handler+trace

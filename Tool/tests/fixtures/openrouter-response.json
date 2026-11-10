@@ -1,0 +1,23 @@
+{
+  "_comment": "Shape-accurate recording of one OpenRouter chat completion for the POST /user/login bundle under pass 1's RESPONSE_SCHEMA (triage only \u2014 cross-endpoint synthesis moved to pass 2, see openrouter-synthesis-response.json). Kept so `uv run pytest` never touches the network or spends money. finding_ids are substituted by the test at load time, because they are hashes of the fixture endpoint and would otherwise silently rot.",
+  "id": "gen-fixture-0001",
+  "object": "chat.completion",
+  "created": 1786966000,
+  "model": "anthropic/claude-sonnet-5",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "{\"alert_verdicts\": [{\"finding_id\": \"__SQLI_MEDIUM__\", \"needs_rescan\": true, \"verdict\": \"undecidable-without-verification\", \"confidence\": \"medium\", \"reasoning\": \"ZAP reports SQL injection on user_name at Medium confidence with no error or timing evidence attached, and the static context lists no SQL sink for this handler. The analyser's silence is not proof of safety, so only an independent exploitation attempt settles it.\", \"suggested_tool\": \"sqlmap\"}, {\"finding_id\": \"__SQLI_HIGH__\", \"needs_rescan\": false, \"verdict\": \"likely-true-positive\", \"confidence\": \"high\", \"reasoning\": \"ZAP already reports High confidence on the password parameter, which for rule 40018 means a boolean or error-based proof was observed. A rescan would repeat work rather than add knowledge.\", \"suggested_tool\": \"none\"}]}"
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1873,
+    "completion_tokens": 291,
+    "total_tokens": 2164,
+    "cost": 0.006656
+  }
+}

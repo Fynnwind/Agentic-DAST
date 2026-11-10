@@ -1,0 +1,50 @@
+# CAMPAIGN · BLOCK 5 · G8c RETRY — Opus 5.5 verify on gitea, re-run after the
+# OpenRouter monthly limit was raised (author, 2026-10-14).
+#
+# The original frver cell (campaign-5-g8-gitea-opus.yml) was INVALID: the key's
+# monthly credit ran out after frscr+frsyn, so every Opus verify call was refused
+# (PaymentRequiredResponseError) — 0 dispatched, $0. The limit is now raised; this
+# re-runs ONLY the verify stage, so frscr/frsyn are NOT re-spent. New out-suffix
+# `-frver2` so the credit-limited record and this valid retry coexist in the ref
+# run dir (the analyzer joins the cell by config, not directory).
+#   uv run dast harness config/harness/campaign-5-g8-gitea-opus-frver.yml --dry-run
+#   uv run dast harness config/harness/campaign-5-g8-gitea-opus-frver.yml
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 4.0         # Opus verify on gitea's ~40-dispatch set; headroom.
+  timeout_minutes: 120
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    # Non-frontier defaults (unused by a verify-only row, kept for provenance parity):
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: user
+    SHARED_RUN_MAX_COST_USD: "4.0"
+
+rows:
+  # G8c — frontier VERIFICATION on the base gitea triage (byte-identical input to
+  # the G5/G6 verify cells: selected 30 + 11 correlated). Does a stronger verifier
+  # reach different outcomes / fewer inconclusives than the default (minimax)?
+  - {name: gitea-user-blind-frver2, run: 20261012T211124Z-gitea-2865f0, stages: [verify], env: {VERIFY_MODEL: anthropic/claude-opus-5.5, VERIFY_PROVIDER: ""}}

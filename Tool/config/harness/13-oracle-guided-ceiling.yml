@@ -1,0 +1,154 @@
+# Optimisation pass 13 — the DETECTION CEILING. How much of each target's
+# documented vulnerability set can this pipeline confirm when it is TOLD what to
+# look for?
+#
+#   uv run dast harness config/harness/13-oracle-guided-ceiling.yml --dry-run
+#   uv run dast harness config/harness/13-oracle-guided-ceiling.yml
+#
+# ~2 h, capped at $4. Four rows over two STORED corpora: blind and oracle-guided
+# on each target. Nothing re-scans — the corpus is held fixed and the only
+# variable is whether the LLM stages were given targets/<name>/oracle.md.
+#
+# ---------------------------------------------------------------------------
+# THE QUESTION, AND WHY THE BLIND NUMBER CANNOT ANSWER IT
+#
+#   The cross-target table reports strict detection of 0/2 on Gitea and 1/3 on
+#   WordPress. That number is honest and it is also ambiguous, because it sums
+#   two failures that call for opposite responses:
+#
+#     * UNDETECTABLE IN PRINCIPLE by this architecture — the marker has no HTTP
+#       surface at all (Gitea's mailer autolink), needs a completed
+#       authenticated action (the login redirect, the migration remote), or is
+#       an authorisation-semantics bug no signature scanner models (the issues
+#       cluster, the WPDM password lock). Nothing about the pipeline would fix
+#       these. They are a limit to state in the write-up.
+#     * DETECTABLE BUT MISSED — the rule exists, the sink is reachable, and this
+#       run did not get there: ZAP's active reflected-XSS rule never completed
+#       inside the budget over the Noir-inflated tree, the triage arm argued a
+#       true positive away, the verification probe was aimed with the wrong
+#       oracle (the 40026 case, twice over). Every one of these is a defect with
+#       an address.
+#
+#   The blind number renders both as "undetected". This sheet separates them by
+#   removing ignorance as a variable: hand every LLM stage the target's own
+#   documented vulnerabilities and measure what it still confirms. What remains
+#   unconfirmed WITH the answer in hand is the first class; the gap between the
+#   ceiling and the blind number is the second.
+#
+# WHAT THIS SHEET DOES NOT PRODUCE
+#
+#   A detection rate. Not one number in the oracle rows is one, and none of them
+#   may appear in a table beside a blind run's. Every artifact these rows write
+#   carries `oracle_guided: true` and every stage prints a warning; the mode
+#   exists to be reported as a labelled upper bound and nothing else. If a
+#   reader could mistake a cell of the write-up for detection, the cell is
+#   wrong, not the label.
+#
+# HOW IT IS SET UP
+#
+#   `SHARED_ORACLE=on` is ONE switch for the whole chain — triage, synthesis and
+#   verification all read it — because a run where triage knew the answer and
+#   verification did not is neither a ceiling nor a blind run. Each stage builds
+#   its own instruction around the same shared facts (`dast_orchestrator.oracle`
+#   STAGE_INSTRUCTIONS): triage looks for the weakness, synthesis cross-
+#   references it across routes, verification sets out to confirm it.
+#
+#   The oracle document is prose about the application — what the weakness is,
+#   which code it lives in, what an attacker sends. It names NO ZAP rule id and
+#   NO verdict. `cve-markers.yml`, which carries the rule ids the detection join
+#   uses, is never shown to a model: feeding it over would measure whether a
+#   model can copy a field.
+#
+# HOW TO READ IT — the counters answer none of this on their own:
+#
+#   1. Run `ground-truth assess` against each row's artifacts and build the
+#      per-marker table: blind vs ceiling, per layer (+deterministic triage,
+#      +llm triage, +verification). One row per marker, both columns, per
+#      target. The interesting cell is a marker UNDETECTED blind and CONFIRMED
+#      under the ceiling — that is a defect with an address, and the artifact
+#      says which layer moved.
+#   2. Per STAGE, not only overall. Does the knowledge help triage (fewer true
+#      positives argued away), synthesis (a propagation claim that names the
+#      right handler family), or verification (the right oracle chosen for the
+#      class)? The project's standing result is that the LLM layer's value is
+#      refutation and cross-endpoint synthesis, never per-finding discovery; if
+#      the ceiling moves only at verification, that result survives oracle mode
+#      and is strengthened by it.
+#   3. THE AGREEMENT TRAP, and read this before believing any lift. The failure
+#      mode of oracle mode is a model that stops analysing and starts agreeing:
+#      told a bug exists, it flags everything, the ceiling reads high and the
+#      number means nothing. Two checks. (a) Does the ceiling row's FLAGGED
+#      count rise sharply against blind on findings that have nothing to do with
+#      any marker? A model reading the description correctly should flag roughly
+#      the same noise, since most alerts on these corpora are unrelated to
+#      anything documented. (b) Do the WordPress "already hardened" items —
+#      `skw`, the inline login form, whose oracle text says explicitly that the
+#      pinned version defends them — get confirmed? If they do, the run measured
+#      compliance, not detection, and the ceiling is void.
+#   4. Cost. The oracle block is a few thousand tokens re-sent on every pass-1
+#      call. It is byte-identical across the run and sits first in the payload,
+#      so it should cache; check `cached_prompt_tokens` rather than assuming it.
+#
+# GUARDRAILS: every oracle row's artifacts must carry `oracle_guided: true`
+# (a row that silently ran blind and is filed as a ceiling is the one outcome
+# this sheet must not produce); check 3(b) above must come back negative; the
+# sheet's spend under $4.
+#
+#   DO NOT PUT A CEILING NUMBER IN THE DETECTION TABLE. Its own table, its own
+#   caption, the word "ceiling" in the heading.
+# ---------------------------------------------------------------------------
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 4.0
+  timeout_minutes: 90
+  env:
+    # Everything else is held: the ONLY variable in this sheet is CEILING.
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_MODELS: ""
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+
+rows:
+  # -- Gitea: the target whose documented cluster is mostly NOT DAST-reachable.
+  # The blind number is 0/2 strict. If the ceiling is also 0/2, that is the
+  # strongest form of the "undetectable in principle" claim this project can
+  # make: the pipeline could not confirm them even holding the answer.
+  - name: gitea-blind
+    target: gitea
+    stages: [triage, verify]
+    run: 20260905T001351Z-gitea-957d97
+    env:
+      SHARED_ORACLE: "off"
+
+  - name: gitea-ceiling
+    target: gitea
+    stages: [triage, verify]
+    run: 20260905T001351Z-gitea-957d97
+    env:
+      SHARED_ORACLE: "on"
+
+  # -- WordPress: the target with two live, reachable reflected-XSS sinks, one
+  # of which the pipeline has confirmed exactly once and only after the browser
+  # oracle existed. This is where a ceiling lift is most likely and most
+  # informative — and where check 3(b) above bites, because three of its oracle
+  # items are documented advisories the pinned version already defends.
+  - name: wordpress-blind
+    target: wordpress
+    stages: [triage, verify]
+    run: 20260904T232640Z-wordpress-d0a531
+    env:
+      SHARED_ORACLE: "off"
+
+  - name: wordpress-ceiling
+    target: wordpress
+    stages: [triage, verify]
+    run: 20260904T232640Z-wordpress-d0a531
+    env:
+      SHARED_ORACLE: "on"

@@ -1,0 +1,61 @@
+# CAMPAIGN · BLOCK 3 · RESUME (2026-10-13).
+#
+# campaign-3 stopped at 5 of 16 when its max_cost_usd:6.0 ceiling tripped — but
+# the spend that tripped it was mostly block-4 Phase A's, running concurrently:
+# the harness ceiling sums NEW runs across the whole data tree since the sheet
+# started (index_dirs = sheet + manual + earlier sheets), so two cost-capped
+# sheets in parallel share one budget. Block 3's own 5 rows cost only ~$0.79 and
+# are valid (5/5 synthesis). This resumes the 11 UNRUN rows, sequentially (no
+# concurrent sibling), so the ceiling counts only these.
+#
+# Completed by block 3 already: grafana G3 x2, wordpress G3 x2, cacti G3 x1.
+# Unrun (here): cacti G3 x1 (-> 2 with block 3, 3 with block 1), gitea G3 x2,
+# and all 8 G4 crawler-only scans. Same config/digest as campaign-3, so the
+# analyzer groups these with the earlier repeats.
+#   uv run dast harness config/harness/campaign-3-resume.yml
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 4.0        # own spend only now (~$1 of model work); G4 is free.
+  timeout_minutes: 240
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7 — same commit as blocks 1-3
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed (baidu failed ~80% 2026-10-12); served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: user
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == G3 remaining — complete the 3-scans-per-target set ====================
+  - {name: cacti-user-blind,     target: cacti,     stages: [scan, triage, verify, report], repeat: 1}
+  - {name: gitea-user-blind,     target: gitea,     stages: [scan, triage, verify, report], repeat: 2}
+
+  # == G4 crawler-only, extraction off, scan only (all 8 unrun) ==============
+  - {name: grafana-user-crawl,   target: grafana,   stages: [scan], repeat: 2, env: {SCAN_NOIR_ENABLED: "off"}}
+  - {name: wordpress-user-crawl, target: wordpress, stages: [scan], repeat: 2, env: {SCAN_NOIR_ENABLED: "off"}}
+  - {name: cacti-user-crawl,     target: cacti,     stages: [scan], repeat: 2, env: {SCAN_NOIR_ENABLED: "off"}}
+  - {name: gitea-user-crawl,     target: gitea,     stages: [scan], repeat: 2, env: {SCAN_NOIR_ENABLED: "off"}}

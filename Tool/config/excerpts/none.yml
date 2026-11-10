@@ -1,0 +1,8 @@
+name: none
+description: >
+  Attaches NO evidence pack: no rule description, no normalised observation, no
+  HTTP exchange, no reachability. It is the A/B baseline for testing what the
+  evidence pack buys, not a fallback. Nothing should ever select it because
+  something failed; a stage that cannot build a pack records `balanced` degraded,
+  never `none`.
+attach: false

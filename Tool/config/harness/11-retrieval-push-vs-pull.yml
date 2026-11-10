@@ -1,0 +1,186 @@
+# Optimisation pass 11 — push vs pull, over BOTH targets, with caching as the
+# second axis.
+#
+#   uv run dast harness config/harness/11-retrieval-push-vs-pull.yml --dry-run
+#   uv run dast harness config/harness/11-retrieval-push-vs-pull.yml
+#
+# ~5-7 h, capped at $6. Eight rows — two targets x (push|pull) x (cache on|off)
+# — repeat 2, over the two STORED baseline corpora. Nothing here re-scans: the
+# only things that move are how pass 1 gets its evidence and whether the shared
+# prefix is marked cacheable.
+#
+# PRECONDITION: both corpora must be the sheet-10 authenticated baselines, and
+# `uv run dast triage <run> --retrieval pull --dry-run` must print a manifest
+# (not an inlined exchange) for each of them. Fill the `run:` ids in from the
+# baseline before running; a sheet pointed at the wrong corpus measures the
+# wrong target.
+#
+# ---------------------------------------------------------------------------
+# WHAT IS ALREADY KNOWN, AND WHY IT DOES NOT SETTLE THIS
+#
+#   The 2026-09-01 live validation (DECISIONS.md §"Live validation of the
+#   retrieval loop") ran both arms over a 14-endpoint Gitea slice:
+#
+#     pull  ~3x the prompt tokens, ~1.8x the money, 42/54 findings answered
+#     push                                            54/54 findings answered
+#
+#   because a tool-use loop re-sends the whole conversation every turn. Two
+#   things make that measurement non-final, and each is a row axis here:
+#
+#   1. IT PREDATES THE CACHE BREAKPOINT. Prompt caching is now marked at all
+#      three sites and measured at the verification site (66-80% of the prompt
+#      served from cache). Caching is the ONLY lever there is against a re-send,
+#      and pull's share of it has never been measured. That is why `cache off`
+#      is a row rather than a footnote: without it, a closed gap cannot be
+#      attributed to caching rather than to the corpus.
+#   2. IT WAS ONE TARGET, AND ONE SLICE. Gitea grounds 100% of its endpoints in
+#      handler source; WordPress grounds 0% (see sheet 08's void banner). If
+#      pull's value is "fetch the source push omitted", the two targets MUST
+#      disagree about how much it helps — and THAT DISAGREEMENT IS THE FINDING,
+#      not either target's number on its own. A sheet that ran one target could
+#      not produce it.
+#
+# HOW TO READ IT — the verdict counts are the LAST column, not the first:
+#
+#   1. prompt_tokens and cached_tokens per row. This is the sheet's primary
+#      measurement. The question "does caching close the gap" is
+#      (pull/push) with caching on, against (pull/push) with it off — four
+#      cells per target, which is why the sheet is a 2x2 and not an A/B.
+#   2. cost_usd per row, same four cells. Money and tokens can move differently:
+#      a cached prompt token is billed at a discount, not at zero.
+#   3. llm_findings_unanswered, and then THE UNANSWERED SET BY HAND. 42/54 is
+#      not a defeat if the 12 pull declined were ones push answered WRONGLY. A
+#      count cannot tell those apart; read the records. This is the question the
+#      2026-09-01 run left open and it is answered by reading, not by summing.
+#   4. The retrieval log — every pull is recorded with its arguments in full,
+#      deliberately, because what the model ASKED FOR is the finding of this
+#      experiment. On WordPress, where no endpoint carries handler source, watch
+#      whether the model keeps asking for source that is not there: a pull arm
+#      spending its budget on empty answers is a different failure from one that
+#      pulls nothing.
+#   5. agreement.* and self_contradictions, as sheets 01-07 read them — but only
+#      after 1-4. A retrieval mode that changed the verdict distribution while
+#      costing more would be a finding; the prior is that it does not.
+#
+# GUARDRAILS: llm_findings_unanswered on the PUSH rows near 0 (it is the arm
+# with no reason to decline); self-consistency contradictions 0-2; no row over
+# its share of the ceiling.
+#
+#   DO NOT REPORT PULL AS A WIN OR A LOSS from one target. Both targets, both
+#   cache settings, and the unanswered set read by hand — or the result is the
+#   2026-09-01 indication again with a bigger denominator.
+# ---------------------------------------------------------------------------
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 6.0
+  timeout_minutes: 90
+  env:
+    # Held across every row. The variables are TRIAGE_RETRIEVAL and DAST_PROMPT_CACHE_*;
+    # everything a prompt's size depends on is pinned here so the token columns
+    # compare like with like.
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL_MAX_CALLS: "6"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    # Synthesis is one whole-corpus call and is NOT the variable; held at 1 so
+    # its sampling does not add spend or variance to a retrieval comparison.
+    TRIAGE_SYNTHESIS_REPEATS: "1"
+
+#
+# CORPUS REPOINTED 2026-09-08. The run ids these rows named — 20260904T022335Z-gitea-957d97
+# and 20260904T033933Z-wordpress-43d307 — no longer exist: they were the FIRST sheet-10
+# baselines, destroyed by an `rm -rf` glob on 2026-09-05, and a row naming a
+# missing run fails at resolution before anything is spent. They are also
+# superseded on their own merits: the WordPress corpus predates `action` as a
+# structural parameter (§P3), which changed what a WordPress scan CONTAINS.
+# The rows now name the 2026-09-05 authenticated baselines. Both arms of every
+# comparison still read one corpus, so the sheet's question is unchanged —
+# but its numbers are not comparable with the runs stored under the old ids.
+
+rows:
+  # ---- Gitea: 354/354 endpoints carry handler source -----------------------
+  - name: gitea-push-cache
+    target: gitea
+    stages: [triage]
+    run: 20260905T001351Z-gitea-957d97
+    repeat: 2
+    env:
+      TRIAGE_RETRIEVAL: push
+      TRIAGE_PROMPT_CACHE: "on"
+      TRIAGE_PROMPT_CACHE_RETRIEVAL: "on"
+
+  - name: gitea-pull-cache
+    target: gitea
+    stages: [triage]
+    run: 20260905T001351Z-gitea-957d97
+    repeat: 2
+    env:
+      TRIAGE_RETRIEVAL: pull
+      TRIAGE_PROMPT_CACHE: "on"
+      TRIAGE_PROMPT_CACHE_RETRIEVAL: "on"
+
+  - name: gitea-push-nocache
+    target: gitea
+    stages: [triage]
+    run: 20260905T001351Z-gitea-957d97
+    repeat: 2
+    env:
+      TRIAGE_RETRIEVAL: push
+      TRIAGE_PROMPT_CACHE: "off"
+      TRIAGE_PROMPT_CACHE_RETRIEVAL: "off"
+
+  - name: gitea-pull-nocache
+    target: gitea
+    stages: [triage]
+    run: 20260905T001351Z-gitea-957d97
+    repeat: 2
+    env:
+      TRIAGE_RETRIEVAL: pull
+      TRIAGE_PROMPT_CACHE: "off"
+      TRIAGE_PROMPT_CACHE_RETRIEVAL: "off"
+
+  # ---- WordPress: 0/90 endpoints carry handler source ----------------------
+  # The contrast that makes this sheet worth running over two targets. If pull's
+  # value is fetching source push omitted, there is nothing here to fetch.
+  - name: wordpress-push-cache
+    target: wordpress
+    stages: [triage]
+    run: 20260904T232640Z-wordpress-d0a531
+    repeat: 2
+    env:
+      TRIAGE_RETRIEVAL: push
+      TRIAGE_PROMPT_CACHE: "on"
+      TRIAGE_PROMPT_CACHE_RETRIEVAL: "on"
+
+  - name: wordpress-pull-cache
+    target: wordpress
+    stages: [triage]
+    run: 20260904T232640Z-wordpress-d0a531
+    repeat: 2
+    env:
+      TRIAGE_RETRIEVAL: pull
+      TRIAGE_PROMPT_CACHE: "on"
+      TRIAGE_PROMPT_CACHE_RETRIEVAL: "on"
+
+  - name: wordpress-push-nocache
+    target: wordpress
+    stages: [triage]
+    run: 20260904T232640Z-wordpress-d0a531
+    repeat: 2
+    env:
+      TRIAGE_RETRIEVAL: push
+      TRIAGE_PROMPT_CACHE: "off"
+      TRIAGE_PROMPT_CACHE_RETRIEVAL: "off"
+
+  - name: wordpress-pull-nocache
+    target: wordpress
+    stages: [triage]
+    run: 20260904T232640Z-wordpress-d0a531
+    repeat: 2
+    env:
+      TRIAGE_RETRIEVAL: pull
+      TRIAGE_PROMPT_CACHE: "off"
+      TRIAGE_PROMPT_CACHE_RETRIEVAL: "off"

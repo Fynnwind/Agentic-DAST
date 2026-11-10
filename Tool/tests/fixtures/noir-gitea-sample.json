@@ -1,0 +1,820 @@
+{
+  "endpoints": [
+    {
+      "ai_context": {
+        "guards": [
+          {
+            "kind": "auth_guard",
+            "name": "Go middleware sessioner",
+            "source": "go_auth",
+            "description": "Protected by Go middleware sessioner",
+            "path": "/src/routers/web/web.go",
+            "line": 246,
+            "confidence": 86,
+            "snippet": "244: ctx.Redirect(setting.AppSubURL + \"/explore/repos\") | 245: }) | 246: m.Get(\"/repos\", explore.Repos) | 247: m.Get(\"/users\", explore.Users) | 248: m.Get(\"/organizations\", explore.Organizations)"
+          }
+        ],
+        "callees": [
+          {
+            "kind": "callee",
+            "name": "explore.Repos",
+            "source": "callee",
+            "description": "Direct 1-hop handler callee extracted from the endpoint body",
+            "path": "/src/routers/web/web.go",
+            "line": 246,
+            "confidence": 92,
+            "snippet": "245: }) | 246: m.Get(\"/repos\", explore.Repos) | 247: m.Get(\"/users\", explore.Users)"
+          }
+        ],
+        "sources": [],
+        "sinks": [],
+        "validators": [],
+        "signals": [
+          {
+            "kind": "route_definition",
+            "name": "GET /explore/repos",
+            "source": "route",
+            "description": "Primary route registration or controller entrypoint",
+            "path": "/src/routers/web/web.go",
+            "line": 246,
+            "confidence": 100,
+            "snippet": "244: ctx.Redirect(setting.AppSubURL + \"/explore/repos\") | 245: }) | 246: m.Get(\"/repos\", explore.Repos) | 247: m.Get(\"/users\", explore.Users) | 248: m.Get(\"/organizations\", explore.Organizations)"
+          },
+          {
+            "kind": "technology",
+            "name": "go_chi",
+            "source": "detector",
+            "description": "Detected framework or language technology for this endpoint",
+            "path": "/src/routers/web/web.go",
+            "line": 246,
+            "confidence": 96,
+            "snippet": "244: ctx.Redirect(setting.AppSubURL + \"/explore/repos\") | 245: }) | 246: m.Get(\"/repos\", explore.Repos) | 247: m.Get(\"/users\", explore.Users) | 248: m.Get(\"/organizations\", explore.Organizations)"
+          }
+        ]
+      },
+      "callees": [
+        {
+          "name": "explore.Repos",
+          "path": "/src/routers/web/web.go",
+          "line": 246
+        }
+      ],
+      "url": "/explore/repos",
+      "method": "GET",
+      "internal": false,
+      "details": {
+        "code_paths": [
+          {
+            "path": "/src/routers/web/web.go",
+            "line": 246
+          }
+        ],
+        "technology": "go_chi"
+      },
+      "protocol": "http",
+      "kind": "",
+      "tags": [
+        {
+          "name": "auth",
+          "description": "Protected by Go middleware sessioner",
+          "tagger": "go_auth"
+        }
+      ],
+      "params": []
+    },
+    {
+      "ai_context": {
+        "guards": [
+          {
+            "kind": "auth_guard",
+            "name": "Go middleware sessioner",
+            "source": "go_auth",
+            "description": "Protected by Go middleware sessioner",
+            "path": "/src/routers/web/web.go",
+            "line": 258,
+            "confidence": 86,
+            "snippet": "256: m.Group(\"/user\", func() { | 257: m.Get(\"/login\", auth.SignIn) | 258: m.Post(\"/login\", bindIgnErr(forms.SignInForm{}), auth.SignInPost) | 259: m.Group(\"\", func() { | 260: m.Combo(\"/login/openid\")."
+          }
+        ],
+        "callees": [
+          {
+            "kind": "callee",
+            "name": "bindIgnErr",
+            "source": "callee",
+            "description": "Direct 1-hop handler callee extracted from the endpoint body",
+            "path": "/src/routers/web/web.go",
+            "line": 258,
+            "confidence": 92,
+            "snippet": "257: m.Get(\"/login\", auth.SignIn) | 258: m.Post(\"/login\", bindIgnErr(forms.SignInForm{}), auth.SignInPost) | 259: m.Group(\"\", func() {"
+          },
+          {
+            "kind": "callee",
+            "name": "auth.SignInPost",
+            "source": "callee",
+            "description": "Direct 1-hop handler callee extracted from the endpoint body",
+            "path": "/src/routers/web/web.go",
+            "line": 258,
+            "confidence": 92,
+            "snippet": "257: m.Get(\"/login\", auth.SignIn) | 258: m.Post(\"/login\", bindIgnErr(forms.SignInForm{}), auth.SignInPost) | 259: m.Group(\"\", func() {"
+          }
+        ],
+        "sources": [],
+        "sinks": [],
+        "validators": [],
+        "signals": [
+          {
+            "kind": "route_definition",
+            "name": "POST /user/login",
+            "source": "route",
+            "description": "Primary route registration or controller entrypoint",
+            "path": "/src/routers/web/web.go",
+            "line": 258,
+            "confidence": 100,
+            "snippet": "256: m.Group(\"/user\", func() { | 257: m.Get(\"/login\", auth.SignIn) | 258: m.Post(\"/login\", bindIgnErr(forms.SignInForm{}), auth.SignInPost) | 259: m.Group(\"\", func() { | 260: m.Combo(\"/login/openid\")."
+          },
+          {
+            "kind": "technology",
+            "name": "go_chi",
+            "source": "detector",
+            "description": "Detected framework or language technology for this endpoint",
+            "path": "/src/routers/web/web.go",
+            "line": 258,
+            "confidence": 96,
+            "snippet": "256: m.Group(\"/user\", func() { | 257: m.Get(\"/login\", auth.SignIn) | 258: m.Post(\"/login\", bindIgnErr(forms.SignInForm{}), auth.SignInPost) | 259: m.Group(\"\", func() { | 260: m.Combo(\"/login/openid\")."
+          },
+          {
+            "kind": "state_change",
+            "name": "POST",
+            "source": "http_method",
+            "description": "State-changing endpoint; review authz, validation, and side effects",
+            "path": "/src/routers/web/web.go",
+            "line": 258,
+            "confidence": 88,
+            "snippet": "256: m.Group(\"/user\", func() { | 257: m.Get(\"/login\", auth.SignIn) | 258: m.Post(\"/login\", bindIgnErr(forms.SignInForm{}), auth.SignInPost) | 259: m.Group(\"\", func() { | 260: m.Combo(\"/login/openid\")."
+          }
+        ]
+      },
+      "callees": [
+        {
+          "name": "bindIgnErr",
+          "path": "/src/routers/web/web.go",
+          "line": 258
+        },
+        {
+          "name": "auth.SignInPost",
+          "path": "/src/routers/web/web.go",
+          "line": 258
+        }
+      ],
+      "url": "/user/login",
+      "method": "POST",
+      "internal": false,
+      "details": {
+        "code_paths": [
+          {
+            "path": "/src/routers/web/web.go",
+            "line": 258
+          }
+        ],
+        "technology": "go_chi"
+      },
+      "protocol": "http",
+      "kind": "",
+      "tags": [
+        {
+          "name": "auth",
+          "description": "Protected by Go middleware sessioner",
+          "tagger": "go_auth"
+        }
+      ],
+      "params": []
+    },
+    {
+      "ai_context": {
+        "guards": [
+          {
+            "kind": "auth_guard",
+            "name": "Go middleware sessioner",
+            "source": "go_auth",
+            "description": "Protected by Go middleware sessioner",
+            "path": "/src/routers/web/web.go",
+            "line": 96,
+            "confidence": 86,
+            "snippet": "94: | 95: // this png is very likely to always be below the limit for gzip so it doesn't need to pass through gzip | 96: routes.Get(\"/apple-touch-icon.png\", func(w http.ResponseWriter, req *http.Request) { | 97: http.Redirect(w, req, path.J"
+          }
+        ],
+        "callees": [
+          {
+            "kind": "callee",
+            "name": "http.Redirect",
+            "source": "callee",
+            "description": "Direct 1-hop handler callee extracted from the endpoint body",
+            "path": "/src/routers/web/web.go",
+            "line": 97,
+            "confidence": 92,
+            "snippet": "96: routes.Get(\"/apple-touch-icon.png\", func(w http.ResponseWriter, req *http.Request) { | 97: http.Redirect(w, req, path.Join(setting.StaticURLPrefix, \"/assets/img/apple-touch-icon.png\"), 301) | 98: })"
+          },
+          {
+            "kind": "callee",
+            "name": "path.Join",
+            "source": "callee",
+            "description": "Direct 1-hop handler callee extracted from the endpoint body",
+            "path": "/src/routers/web/web.go",
+            "line": 97,
+            "confidence": 92,
+            "snippet": "96: routes.Get(\"/apple-touch-icon.png\", func(w http.ResponseWriter, req *http.Request) { | 97: http.Redirect(w, req, path.Join(setting.StaticURLPrefix, \"/assets/img/apple-touch-icon.png\"), 301) | 98: })"
+          }
+        ],
+        "sources": [],
+        "sinks": [
+          {
+            "kind": "redirect",
+            "name": "Redirect",
+            "source": "callee",
+            "description": "Potential redirect sink inferred from code or callee name",
+            "path": "/src/routers/web/web.go",
+            "line": 97,
+            "confidence": 74,
+            "snippet": "96: routes.Get(\"/apple-touch-icon.png\", func(w http.ResponseWriter, req *http.Request) { | 97: http.Redirect(w, req, path.Join(setting.StaticURLPrefix, \"/assets/img/apple-touch-icon.png\"), 301) | 98: })"
+          }
+        ],
+        "validators": [],
+        "signals": [
+          {
+            "kind": "route_definition",
+            "name": "GET /apple-touch-icon.png",
+            "source": "route",
+            "description": "Primary route registration or controller entrypoint",
+            "path": "/src/routers/web/web.go",
+            "line": 96,
+            "confidence": 100,
+            "snippet": "94: | 95: // this png is very likely to always be below the limit for gzip so it doesn't need to pass through gzip | 96: routes.Get(\"/apple-touch-icon.png\", func(w http.ResponseWriter, req *http.Request) { | 97: http.Redirect(w, req, path.J"
+          },
+          {
+            "kind": "technology",
+            "name": "go_chi",
+            "source": "detector",
+            "description": "Detected framework or language technology for this endpoint",
+            "path": "/src/routers/web/web.go",
+            "line": 96,
+            "confidence": 96,
+            "snippet": "94: | 95: // this png is very likely to always be below the limit for gzip so it doesn't need to pass through gzip | 96: routes.Get(\"/apple-touch-icon.png\", func(w http.ResponseWriter, req *http.Request) { | 97: http.Redirect(w, req, path.J"
+          }
+        ]
+      },
+      "callees": [
+        {
+          "name": "http.Redirect",
+          "path": "/src/routers/web/web.go",
+          "line": 97
+        },
+        {
+          "name": "path.Join",
+          "path": "/src/routers/web/web.go",
+          "line": 97
+        }
+      ],
+      "url": "/apple-touch-icon.png",
+      "method": "GET",
+      "internal": false,
+      "details": {
+        "code_paths": [
+          {
+            "path": "/src/routers/web/web.go",
+            "line": 96
+          }
+        ],
+        "technology": "go_chi"
+      },
+      "protocol": "http",
+      "kind": "",
+      "tags": [
+        {
+          "name": "auth",
+          "description": "Protected by Go middleware sessioner",
+          "tagger": "go_auth"
+        }
+      ],
+      "params": []
+    },
+    {
+      "ai_context": {
+        "guards": [
+          {
+            "kind": "auth_guard",
+            "name": "Go middleware sessioner",
+            "source": "go_auth",
+            "description": "Protected by Go middleware sessioner",
+            "path": "/src/routers/web/web.go",
+            "line": 374,
+            "confidence": 86,
+            "snippet": "372: m.Post(\"/activate\", auth.ActivatePost, reqSignIn) | 373: m.Any(\"/activate_email\", auth.ActivateEmail) | 374: m.Get(\"/avatar/{username}/{size}\", user.AvatarByUserName) | 375: m.Get(\"/recover_account\", auth.ResetPasswd) | 376: m.Post(\"/r"
+          }
+        ],
+        "callees": [
+          {
+            "kind": "callee",
+            "name": "user.AvatarByUserName",
+            "source": "callee",
+            "description": "Direct 1-hop handler callee extracted from the endpoint body",
+            "path": "/src/routers/web/web.go",
+            "line": 374,
+            "confidence": 92,
+            "snippet": "373: m.Any(\"/activate_email\", auth.ActivateEmail) | 374: m.Get(\"/avatar/{username}/{size}\", user.AvatarByUserName) | 375: m.Get(\"/recover_account\", auth.ResetPasswd)"
+          }
+        ],
+        "sources": [
+          {
+            "kind": "request_input",
+            "name": "path.username",
+            "source": "param",
+            "description": "Route path parameter supplied by the caller.",
+            "path": "/src/routers/web/web.go",
+            "line": 374,
+            "confidence": 88,
+            "snippet": "372: m.Post(\"/activate\", auth.ActivatePost, reqSignIn) | 373: m.Any(\"/activate_email\", auth.ActivateEmail) | 374: m.Get(\"/avatar/{username}/{size}\", user.AvatarByUserName) | 375: m.Get(\"/recover_account\", auth.ResetPasswd) | 376: m.Post(\"/r"
+          },
+          {
+            "kind": "request_input",
+            "name": "path.size",
+            "source": "param",
+            "description": "Route path parameter supplied by the caller.",
+            "path": "/src/routers/web/web.go",
+            "line": 374,
+            "confidence": 88,
+            "snippet": "372: m.Post(\"/activate\", auth.ActivatePost, reqSignIn) | 373: m.Any(\"/activate_email\", auth.ActivateEmail) | 374: m.Get(\"/avatar/{username}/{size}\", user.AvatarByUserName) | 375: m.Get(\"/recover_account\", auth.ResetPasswd) | 376: m.Post(\"/r"
+          }
+        ],
+        "sinks": [],
+        "validators": [],
+        "signals": [
+          {
+            "kind": "route_definition",
+            "name": "GET /user/avatar/{username}/{size}",
+            "source": "route",
+            "description": "Primary route registration or controller entrypoint",
+            "path": "/src/routers/web/web.go",
+            "line": 374,
+            "confidence": 100,
+            "snippet": "372: m.Post(\"/activate\", auth.ActivatePost, reqSignIn) | 373: m.Any(\"/activate_email\", auth.ActivateEmail) | 374: m.Get(\"/avatar/{username}/{size}\", user.AvatarByUserName) | 375: m.Get(\"/recover_account\", auth.ResetPasswd) | 376: m.Post(\"/r"
+          },
+          {
+            "kind": "technology",
+            "name": "go_chi",
+            "source": "detector",
+            "description": "Detected framework or language technology for this endpoint",
+            "path": "/src/routers/web/web.go",
+            "line": 374,
+            "confidence": 96,
+            "snippet": "372: m.Post(\"/activate\", auth.ActivatePost, reqSignIn) | 373: m.Any(\"/activate_email\", auth.ActivateEmail) | 374: m.Get(\"/avatar/{username}/{size}\", user.AvatarByUserName) | 375: m.Get(\"/recover_account\", auth.ResetPasswd) | 376: m.Post(\"/r"
+          },
+          {
+            "kind": "path_param",
+            "name": "username",
+            "source": "param",
+            "description": "Path parameter participates in route selection and often controls object lookup",
+            "path": "/src/routers/web/web.go",
+            "line": 374,
+            "confidence": 84,
+            "snippet": "372: m.Post(\"/activate\", auth.ActivatePost, reqSignIn) | 373: m.Any(\"/activate_email\", auth.ActivateEmail) | 374: m.Get(\"/avatar/{username}/{size}\", user.AvatarByUserName) | 375: m.Get(\"/recover_account\", auth.ResetPasswd) | 376: m.Post(\"/r"
+          },
+          {
+            "kind": "path_param",
+            "name": "size",
+            "source": "param",
+            "description": "Path parameter participates in route selection and often controls object lookup",
+            "path": "/src/routers/web/web.go",
+            "line": 374,
+            "confidence": 84,
+            "snippet": "372: m.Post(\"/activate\", auth.ActivatePost, reqSignIn) | 373: m.Any(\"/activate_email\", auth.ActivateEmail) | 374: m.Get(\"/avatar/{username}/{size}\", user.AvatarByUserName) | 375: m.Get(\"/recover_account\", auth.ResetPasswd) | 376: m.Post(\"/r"
+          }
+        ]
+      },
+      "callees": [
+        {
+          "name": "user.AvatarByUserName",
+          "path": "/src/routers/web/web.go",
+          "line": 374
+        }
+      ],
+      "url": "/user/avatar/{username}/{size}",
+      "method": "GET",
+      "internal": false,
+      "details": {
+        "code_paths": [
+          {
+            "path": "/src/routers/web/web.go",
+            "line": 374
+          }
+        ],
+        "technology": "go_chi"
+      },
+      "protocol": "http",
+      "kind": "",
+      "tags": [
+        {
+          "name": "auth",
+          "description": "Protected by Go middleware sessioner",
+          "tagger": "go_auth"
+        }
+      ],
+      "params": [
+        {
+          "name": "username",
+          "value": "",
+          "param_type": "path",
+          "tags": []
+        },
+        {
+          "name": "size",
+          "value": "",
+          "param_type": "path",
+          "tags": []
+        }
+      ]
+    },
+    {
+      "ai_context": {
+        "guards": [
+          {
+            "kind": "auth_guard",
+            "name": "Go middleware sessioner",
+            "source": "go_auth",
+            "description": "Protected by Go middleware sessioner",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 86,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          }
+        ],
+        "callees": [
+          {
+            "kind": "callee",
+            "name": "repo.RawDiff",
+            "source": "callee",
+            "description": "Direct 1-hop handler callee extracted from the endpoint body",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 92,
+            "snippet": "924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: }, repo.MustEnableWiki"
+          }
+        ],
+        "sources": [
+          {
+            "kind": "request_input",
+            "name": "path.username",
+            "source": "param",
+            "description": "Route path parameter supplied by the caller.",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 88,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          },
+          {
+            "kind": "request_input",
+            "name": "path.reponame",
+            "source": "param",
+            "description": "Route path parameter supplied by the caller.",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 88,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          },
+          {
+            "kind": "request_input",
+            "name": "path.sha",
+            "source": "param",
+            "description": "Route path parameter supplied by the caller.",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 88,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          },
+          {
+            "kind": "request_input",
+            "name": "path.ext",
+            "source": "param",
+            "description": "Route path parameter supplied by the caller.",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 88,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          }
+        ],
+        "sinks": [],
+        "validators": [],
+        "signals": [
+          {
+            "kind": "route_definition",
+            "name": "GET /{username}/{reponame}/wiki/commit/{sha:[a-f0-9]{7,40}}.{ext}",
+            "source": "route",
+            "description": "Primary route registration or controller entrypoint",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 100,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          },
+          {
+            "kind": "technology",
+            "name": "go_chi",
+            "source": "detector",
+            "description": "Detected framework or language technology for this endpoint",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 96,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          },
+          {
+            "kind": "path_param",
+            "name": "username",
+            "source": "param",
+            "description": "Path parameter participates in route selection and often controls object lookup",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 84,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          },
+          {
+            "kind": "path_param",
+            "name": "reponame",
+            "source": "param",
+            "description": "Path parameter participates in route selection and often controls object lookup",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 84,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          },
+          {
+            "kind": "path_param",
+            "name": "sha",
+            "source": "param",
+            "description": "Path parameter participates in route selection and often controls object lookup",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 84,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          },
+          {
+            "kind": "path_param",
+            "name": "ext",
+            "source": "param",
+            "description": "Path parameter participates in route selection and often controls object lookup",
+            "path": "/src/routers/web/web.go",
+            "line": 925,
+            "confidence": 84,
+            "snippet": "923: repo.WikiPost) | 924: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}\", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff) | 925: m.Get(\"/commit/{sha:[a-f0-9]{7,40}}.{ext:patch|diff}\", repo.RawDiff) | 926: "
+          }
+        ]
+      },
+      "callees": [
+        {
+          "name": "repo.RawDiff",
+          "path": "/src/routers/web/web.go",
+          "line": 925
+        }
+      ],
+      "url": "/{username}/{reponame}/wiki/commit/{sha:[a-f0-9]{7,40}}.{ext}",
+      "method": "GET",
+      "internal": false,
+      "details": {
+        "code_paths": [
+          {
+            "path": "/src/routers/web/web.go",
+            "line": 925
+          }
+        ],
+        "technology": "go_chi"
+      },
+      "protocol": "http",
+      "kind": "",
+      "tags": [
+        {
+          "name": "auth",
+          "description": "Protected by Go middleware sessioner",
+          "tagger": "go_auth"
+        }
+      ],
+      "params": [
+        {
+          "name": "username",
+          "value": "",
+          "param_type": "path",
+          "tags": []
+        },
+        {
+          "name": "reponame",
+          "value": "",
+          "param_type": "path",
+          "tags": []
+        },
+        {
+          "name": "sha",
+          "value": "",
+          "param_type": "path",
+          "tags": []
+        },
+        {
+          "name": "ext",
+          "value": "",
+          "param_type": "path",
+          "tags": []
+        }
+      ]
+    },
+    {
+      "ai_context": {
+        "guards": [
+          {
+            "kind": "auth_guard",
+            "name": "Go middleware sessioner",
+            "source": "go_auth",
+            "description": "Protected by Go middleware sessioner",
+            "path": "/src/routers/web/web.go",
+            "line": 488,
+            "confidence": 86,
+            "snippet": "486: | 487: if !setting.IsProd { | 488: m.Get(\"/template/*\", dev.TemplatePreview) | 489: } | 490:"
+          }
+        ],
+        "callees": [
+          {
+            "kind": "callee",
+            "name": "dev.TemplatePreview",
+            "source": "callee",
+            "description": "Direct 1-hop handler callee extracted from the endpoint body",
+            "path": "/src/routers/web/web.go",
+            "line": 488,
+            "confidence": 92,
+            "snippet": "487: if !setting.IsProd { | 488: m.Get(\"/template/*\", dev.TemplatePreview) | 489: }"
+          }
+        ],
+        "sources": [],
+        "sinks": [],
+        "validators": [],
+        "signals": [
+          {
+            "kind": "route_definition",
+            "name": "GET /template/*",
+            "source": "route",
+            "description": "Primary route registration or controller entrypoint",
+            "path": "/src/routers/web/web.go",
+            "line": 488,
+            "confidence": 100,
+            "snippet": "486: | 487: if !setting.IsProd { | 488: m.Get(\"/template/*\", dev.TemplatePreview) | 489: } | 490:"
+          },
+          {
+            "kind": "technology",
+            "name": "go_chi",
+            "source": "detector",
+            "description": "Detected framework or language technology for this endpoint",
+            "path": "/src/routers/web/web.go",
+            "line": 488,
+            "confidence": 96,
+            "snippet": "486: | 487: if !setting.IsProd { | 488: m.Get(\"/template/*\", dev.TemplatePreview) | 489: } | 490:"
+          }
+        ]
+      },
+      "callees": [
+        {
+          "name": "dev.TemplatePreview",
+          "path": "/src/routers/web/web.go",
+          "line": 488
+        }
+      ],
+      "url": "/template/*",
+      "method": "GET",
+      "internal": false,
+      "details": {
+        "code_paths": [
+          {
+            "path": "/src/routers/web/web.go",
+            "line": 488
+          }
+        ],
+        "technology": "go_chi"
+      },
+      "protocol": "http",
+      "kind": "",
+      "tags": [
+        {
+          "name": "auth",
+          "description": "Protected by Go middleware sessioner",
+          "tagger": "go_auth"
+        }
+      ],
+      "params": []
+    },
+    {
+      "ai_context": {
+        "guards": [],
+        "callees": [],
+        "sources": [],
+        "sinks": [],
+        "validators": [],
+        "signals": [
+          {
+            "kind": "route_definition",
+            "name": "CLI cli://gitea/admin",
+            "source": "route",
+            "description": "Primary route registration or controller entrypoint",
+            "path": "/src/cmd/admin.go",
+            "line": 40,
+            "confidence": 100,
+            "snippet": "38: // CmdAdmin represents the available admin sub-command. | 39: CmdAdmin = cli.Command{ | 40: Name: \"admin\", | 41: Usage: \"Command line interface to perform common administrative operations\", | 42: Subcommands: []cli.Command{"
+          },
+          {
+            "kind": "technology",
+            "name": "go_cli",
+            "source": "detector",
+            "description": "Detected framework or language technology for this endpoint",
+            "path": "/src/cmd/admin.go",
+            "line": 40,
+            "confidence": 96,
+            "snippet": "38: // CmdAdmin represents the available admin sub-command. | 39: CmdAdmin = cli.Command{ | 40: Name: \"admin\", | 41: Usage: \"Command line interface to perform common administrative operations\", | 42: Subcommands: []cli.Command{"
+          },
+          {
+            "kind": "admin",
+            "name": "admin",
+            "source": "Admin",
+            "description": "Administrative or privileged endpoint; high-value target for broken access control, privilege escalation, and forced browsing.",
+            "path": "/src/cmd/admin.go",
+            "line": 40,
+            "confidence": 74,
+            "snippet": "38: // CmdAdmin represents the available admin sub-command. | 39: CmdAdmin = cli.Command{ | 40: Name: \"admin\", | 41: Usage: \"Command line interface to perform common administrative operations\", | 42: Subcommands: []cli.Command{"
+          }
+        ]
+      },
+      "callees": [],
+      "url": "cli://gitea/admin",
+      "method": "CLI",
+      "internal": false,
+      "details": {
+        "code_paths": [
+          {
+            "path": "/src/cmd/admin.go",
+            "line": 40
+          }
+        ],
+        "technology": "go_cli"
+      },
+      "protocol": "cli",
+      "kind": "",
+      "tags": [
+        {
+          "name": "admin",
+          "description": "Administrative or privileged endpoint; high-value target for broken access control, privilege escalation, and forced browsing.",
+          "tagger": "Admin"
+        }
+      ],
+      "params": []
+    },
+    {
+      "ai_context": {
+        "guards": [],
+        "callees": [],
+        "sources": [],
+        "sinks": [],
+        "validators": [],
+        "signals": [
+          {
+            "kind": "route_definition",
+            "name": "ANY https://gitea-docs.netlify.com/*",
+            "source": "route",
+            "description": "Primary route registration or controller entrypoint",
+            "path": "/src/docs/static/_redirects",
+            "line": 1,
+            "confidence": 100,
+            "snippet": "1: https://gitea-docs.netlify.com/* https://docs.gitea.io/:splat 302! | 2: | 3: / /fr-fr/ 302! Language=fr"
+          },
+          {
+            "kind": "technology",
+            "name": "netlify",
+            "source": "detector",
+            "description": "Detected framework or language technology for this endpoint",
+            "path": "/src/docs/static/_redirects",
+            "line": 1,
+            "confidence": 96,
+            "snippet": "1: https://gitea-docs.netlify.com/* https://docs.gitea.io/:splat 302! | 2: | 3: / /fr-fr/ 302! Language=fr"
+          }
+        ]
+      },
+      "callees": [],
+      "url": "https://gitea-docs.netlify.com/*",
+      "method": "ANY",
+      "internal": false,
+      "details": {
+        "code_paths": [
+          {
+            "path": "/src/docs/static/_redirects",
+            "line": 1
+          }
+        ],
+        "technology": "netlify"
+      },
+      "protocol": "http",
+      "kind": "",
+      "tags": [],
+      "params": []
+    }
+  ],
+  "passive_results": []
+}

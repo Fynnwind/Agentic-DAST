@@ -1,0 +1,24 @@
+%% The pipeline: one CLI (dast) drives four stages over one run directory.
+%% Everything below the fold shares no code with the pipeline.
+flowchart TB
+    tgt[("target under test<br/>(persistent stack)")]
+    subgraph pipeline["the pipeline — dast scan / triage / verify / report"]
+        direction LR
+        scan["<b>scan</b><br/>Noir seed →<br/>ZAP spider + active"]
+        triage["<b>triage</b><br/>two independent arms"]
+        verify["<b>verify</b><br/>one loop, two axes"]
+        report["<b>report</b><br/>SARIF 2.1.0 + summary"]
+        scan --> triage --> verify --> report
+    end
+    corpus[("data/runs/&lt;run-id&gt;/<br/>one run, one directory")]
+    subgraph aside["off to the side — read data/, share no pipeline code"]
+        direction LR
+        sa["<b>static-analysis</b><br/>Semgrep + OSV-Scanner"]
+        cve["<b>cve</b><br/>ground-truth axis"]
+        idx["<b>costs</b><br/>metrics table"]
+        harn["<b>harness</b><br/>unattended sheet runner"]
+    end
+    tgt -. "HTTP over dast-net" .-> pipeline
+    pipeline == "every stage writes the corpus" ==> corpus
+    corpus -.-> aside
+    aside -. "harness drives many runs" .-> pipeline

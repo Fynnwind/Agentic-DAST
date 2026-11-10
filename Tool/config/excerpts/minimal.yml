@@ -1,0 +1,10 @@
+name: minimal
+description: >
+  The floor: headers only, no body anywhere. Exists as the A/B baseline against
+  which any body-carrying policy has to justify its tokens — not as a degraded
+  mode. If `balanced` does not beat this on a sheet, the bodies are not paying
+  for themselves and that is a result worth having.
+defaults:
+  request_headers: all
+  response_headers: all
+  body: none

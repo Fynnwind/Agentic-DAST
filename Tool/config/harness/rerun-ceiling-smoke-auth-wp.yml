@@ -1,0 +1,49 @@
+# RESCAN · trimmed ceiling smoke, WordPress row alone — the gate row the smoke at
+# rerun-2026-11-03b lost in alert collection (ZAP closed the connection mid-page; fixed
+# fc2cc92). NOT a corpus sheet. Row wordpress-admin-ceiling of
+# rerun-ceiling-smoke-auth.yml, unchanged (tests/unit/test_rerun_sheets.py pins it); that
+# sheet's Cacti row ran at rerun-2026-11-03b, whose code differs only in how alert pages
+# are fetched, and Cacti's alerts fit one page.
+#
+#   uv run dast harness config/harness/rerun-ceiling-smoke-auth-wp.yml
+#
+# Gate: WordPress admin confirms CVE-2021-25069 (sqlmap, the stats SQLi); the session held;
+# the alerts are collected (any alert_fetch_retries in scan-zap-alerts.json are read).
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 12.0
+  timeout_minutes: 240
+  env:
+    # freeze commit: rerun-2026-11-03f
+    SCAN_RESET_TARGET: "on"
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "20"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "150"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "on"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # wordpress at ADMIN: CVE-2021-25069 (stats SQLi) is auth: admin, so the gate
+  # must seed a real admin session to exercise WP's only confirmable marker.
+  - {name: wordpress-admin-ceiling, target: wordpress, stages: [scan, triage, verify], env: {SHARED_AUTH_MODE: admin}}

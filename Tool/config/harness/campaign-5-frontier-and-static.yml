@@ -1,0 +1,114 @@
+# CAMPAIGN · BLOCK 5 · G8 (frontier probe) + G9 (static/dependency) + G10 (OOB).
+# Thesis-Analyzer/RUN-PLAN.md §5 (G8-G10), §6 (block 5), §7 (G8 cost), §10 (open).
+#
+#   uv run dast harness config/harness/campaign-5-frontier-and-static.yml --dry-run
+#   uv run dast harness config/harness/campaign-5-frontier-and-static.yml
+#
+# ===========================================================================
+# TEMPLATE — two things to fill before running:
+#  1. RUN IDS: replace REF-<t>-user-blind with block 1's <t>-user-blind SCAN id.
+#  2. FRONTIER MODEL (parked, RUN-PLAN §10): replace FRONTIER-MODEL / FRONTIER-
+#     PROVIDER. Leading candidate is Claude Fable 5.1 (`anthropic/claude-fable-5-1`
+#     on OpenRouter), $10/$50 per MTok — 5x the price RUN-PLAN §7 costed against,
+#     so the FULL G8 probe is ~70-120 USD, over this sheet's 25 USD ceiling (P6).
+#     RECOMMENDED SCOPE: G8b synthesis only (the rows below), ~15-20 USD for all
+#     four targets — the one part that fits the ceiling and the one where a
+#     premium model is affordable (one synthesis call x 5 samples). G8a and G8c
+#     stay COMMENTED OUT; fund either only under its own raised budget after
+#     revising §7/§10. (NEXT_SESSION.md §5, §8.)
+#  3. P5 SMOKE-TEST the frontier model first (RUN-PLAN P5): the capability-aware
+#     send landed this session (NEXT_SESSION §9 bugfix), so the pipeline now omits
+#     `temperature`/`seed` when OpenRouter reports the model doesn't accept them —
+#     but a hard provider pin routes with fallbacks off, so confirm the pinned
+#     provider serves the model and that a call succeeds before committing budget.
+# ===========================================================================
+#
+# P6 budget: this sheet alone gets `max_cost_usd: 25` and `SHARED_RUN_MAX_COST_USD:
+# 8` per run (the default is 1). G9 is free (no model); G10 is not a harness row.
+#
+# G8b — FRONTIER SYNTHESIS (RUN-PLAN §5 G8b). On the G1 blind reference scan, all
+# four targets: screening and verification at the DEFAULT models, only the
+# synthesis model is the frontier one. One run per target (repeat 1), with the
+# five samples coming from the default TRIAGE_SYNTHESIS_REPEATS=5 inside the run.
+# Read against the 5 default synthesis samples (block 1 + G5): claims, how many
+# recur in >=3 of 5, their post-verification disposition.
+#
+# G9 — STATIC + DEPENDENCY ANALYSIS (RUN-PLAN §5 G9). One `static-analysis` per
+# target over the pinned source, written beside the blind reference run so the
+# analyzer's cross-section (§8) joins it to the reference cell. No model. NEEDS
+# P4 (static-analysis-cache/ populated) — else the rows fail with the checkout
+# command. `static-analysis` takes no suffix; the run id names the target.
+#
+# G10 — OOB CONFIRMATION (RUN-PLAN §5 G10): NOT a harness row. Run
+# `Targets/cacti/env/confirm-oob.sh` against the known sink with the OOB stack up,
+# 3 times, and STORE the record (date, nuclei image digest, template ids,
+# interactions seen, the command) beside the Cacti ceiling run, labelled outside
+# the chain. No artifact writer exists for this yet (NEXT_SESSION §4/§9) — until
+# one lands, hand-author the record file in the run dir.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 25.0        # P6 — the G8 sheet ceiling.
+  timeout_minutes: 240      # frontier latency is unknown; allow headroom (P5/§7).
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7 — same commit as blocks 1-4
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    # Screening + verify stay at the DEFAULT pinned models (G8b probes synthesis).
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed, not pinned: baidu failed ~80% of deepseek-v3.2 calls 2026-10-12; served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: user
+    SHARED_RUN_MAX_COST_USD: "8.0"   # P6 — per-run ceiling for the probe.
+
+rows:
+  # == G8b · frontier synthesis (recommended scope) =========================
+  # Only the synthesis model + provider are overridden to the frontier one.
+  - {name: grafana-user-blind-frsyn,   run: 20261012T145740Z-grafana-853739,   stages: [triage, verify], env: {TRIAGE_SYNTHESIS_MODEL: anthropic/claude-opus-5.5, TRIAGE_SYNTHESIS_PROVIDER: ""}}
+  - {name: wordpress-user-blind-frsyn, run: 20261012T163157Z-wordpress-ee000d, stages: [triage, verify], env: {TRIAGE_SYNTHESIS_MODEL: anthropic/claude-opus-5.5, TRIAGE_SYNTHESIS_PROVIDER: ""}}
+  - {name: cacti-user-blind-frsyn,     run: 20261012T185327Z-cacti-f049d3,     stages: [triage, verify], env: {TRIAGE_SYNTHESIS_MODEL: anthropic/claude-opus-5.5, TRIAGE_SYNTHESIS_PROVIDER: ""}}
+  - {name: gitea-user-blind-frsyn,     run: 20261012T211124Z-gitea-2865f0,     stages: [triage, verify], env: {TRIAGE_SYNTHESIS_MODEL: anthropic/claude-opus-5.5, TRIAGE_SYNTHESIS_PROVIDER: ""}}
+
+  # == G9 · static + dependency analysis (NEEDS P4) =========================
+  # Joins the blind reference run so its SARIF sits beside the reference cell.
+  - {name: grafana-static,   run: REF-grafana-user-blind,   stages: [static-analysis]}
+  - {name: wordpress-static, run: REF-wordpress-user-blind, stages: [static-analysis]}
+  - {name: cacti-static,     run: REF-cacti-user-blind,     stages: [static-analysis]}
+  - {name: gitea-static,     run: REF-gitea-user-blind,     stages: [static-analysis]}
+
+  # == G8a · frontier screening — COMMENTED OUT (fund under a raised budget) =
+  # frscr, triage with synthesis OFF, gitea/wordpress/grafana only (Cacti is 2/3
+  # of the screening tokens, RUN-PLAN §5). ~25-50 USD at Fable; exceeds the 25
+  # ceiling — raise max_cost_usd and SHARED_RUN_MAX_COST_USD first, then uncomment.
+  # - {name: grafana-user-blind-frscr,   run: 20261012T145740Z-grafana-853739,   stages: [triage], repeat: 2, env: {TRIAGE_SCREENING_MODEL: anthropic/claude-opus-5.5, TRIAGE_SCREENING_PROVIDER: "", TRIAGE_SYNTHESIS_ENABLED: "off"}}
+  # - {name: wordpress-user-blind-frscr, run: 20261012T163157Z-wordpress-ee000d, stages: [triage], repeat: 2, env: {TRIAGE_SCREENING_MODEL: anthropic/claude-opus-5.5, TRIAGE_SCREENING_PROVIDER: "", TRIAGE_SYNTHESIS_ENABLED: "off"}}
+  # - {name: gitea-user-blind-frscr,     run: 20261012T211124Z-gitea-2865f0,     stages: [triage], repeat: 2, env: {TRIAGE_SCREENING_MODEL: anthropic/claude-opus-5.5, TRIAGE_SCREENING_PROVIDER: "", TRIAGE_SYNTHESIS_ENABLED: "off"}}
+
+  # == G8c · frontier verification — COMMENTED OUT (fund under a raised budget)
+  # frver, verify-only reading the G1 base triage, all four targets, repeat 2.
+  # ~30-50 USD at Fable; exceeds the 25 ceiling — raise the budgets first.
+  # - {name: grafana-user-blind-frver,   run: 20261012T145740Z-grafana-853739,   stages: [verify], repeat: 2, env: {VERIFY_MODEL: anthropic/claude-opus-5.5, VERIFY_PROVIDER: ""}}
+  # - {name: wordpress-user-blind-frver, run: 20261012T163157Z-wordpress-ee000d, stages: [verify], repeat: 2, env: {VERIFY_MODEL: anthropic/claude-opus-5.5, VERIFY_PROVIDER: ""}}
+  # - {name: cacti-user-blind-frver,     run: 20261012T185327Z-cacti-f049d3,     stages: [verify], repeat: 2, env: {VERIFY_MODEL: anthropic/claude-opus-5.5, VERIFY_PROVIDER: ""}}
+  # - {name: gitea-user-blind-frver,     run: 20261012T211124Z-gitea-2865f0,     stages: [verify], repeat: 2, env: {VERIFY_MODEL: anthropic/claude-opus-5.5, VERIFY_PROVIDER: ""}}

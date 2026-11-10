@@ -1,0 +1,87 @@
+# CAMPAIGN · BLOCK 8 · even the §10 spread to n=6 per target × polarity.
+#
+#   uv run dast harness config/harness/campaign-8-even-fill.yml --dry-run
+#   uv run dast harness config/harness/campaign-8-even-fill.yml
+#
+# WHY. The post-corpus §10 spread had uneven n — blind grafana 4 / cacti 6 /
+# wordpress 6 / gitea 7, ceiling grafana 6 / cacti 1 / wordpress 6 / gitea 6
+# (contaminated). Block-6 reached "7" only by counting frozen reps a post-only
+# table cannot include, and block-7 pushed gitea blind to 7. This sheet fills the
+# gaps so every target × {blind, ceiling} lands at n=6 on FINAL code:
+#   - grafana BLIND  +2  (4 -> 6) — persistent, NO reset (grafana is unpolluted)
+#   - cacti   CEILING +5 (1 -> 6) — --reset-target: block-6 got only 1 because
+#       cacti DEADLOCKS under sustained oracle+OOB load; restarting the container
+#       per scan (what reset does) is the mitigation. cacti's accumulation is the
+#       off-surface login log, not crawlable state, so this is about the deadlock,
+#       not contamination. OOB stack must be up (interactsh + dns-resolver).
+#   - gitea   CEILING +6 (replaces the 6 contaminated block-6 ceiling runs) —
+#       --reset-target, clean seeded snapshot per scan.
+# gitea BLIND (7) is capped to 6 in the analyzer (drop 1) — no scan. cacti BLIND
+# (6) and the grafana/wordpress ceilings (6) are already even and untouched.
+#
+# PREREQUISITES (both snapshots already captured this session):
+#   gitea:  ./Targets/gitea/env/reset.sh --snapshot   (1.6M)
+#   cacti:  ./Targets/cacti/env/reset.sh --snapshot   (575M, login log truncated)
+# Row names are <target>-<auth>-<role> so the analyzer parses role natively, and
+# VERIFY_PROVIDER is preference-routed (friendli dropped minimax/minimax-m2.5).
+#
+# AFTER: run `dast cve` on each new CEILING run (marker-catch/lifecycle read
+# cve-detection.json), then the analyzer supersede + figure regen.
+#
+# COST/TIME: 13 full-chain runs, ~$3–5 model, several hours — cacti ceiling is
+# the bottleneck and may need a cacti restart + row re-run if it still deadlocks.
+# NOT the frozen corpus — a §10 follow-up at the current commit; new run ids.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 6.0         # tripwire; sums NEW tree spend since start.
+  timeout_minutes: 240
+  env:
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""             # preference-routed (friendli dropped this model 2026-10-23)
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"               # overridden ON for the cacti CEILING row only
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"            # sheet default = blind; ceiling rows flip it ON
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+# ORDER: the low-risk rows first (grafana blind, gitea ceiling), cacti ceiling
+# LAST — cacti is the one that may deadlock, so running it last means grafana and
+# gitea complete regardless of whether cacti needs a nudge. Ceilings are
+# scan→triage→verify (not a deliverable, no report); blind runs the full chain.
+rows:
+  - {name: grafana-user-blind, target: grafana, stages: [scan, triage, verify, report], repeat: 2, env: {SHARED_AUTH_MODE: user}}
+
+  - {name: gitea-user-ceiling, target: gitea, stages: [scan, triage, verify], repeat: 6, env: {SHARED_AUTH_MODE: user, SHARED_ORACLE: "on", SCAN_RESET_TARGET: "on"}}
+
+  - name: cacti-admin-ceiling
+    target: cacti
+    stages: [scan, triage, verify]
+    repeat: 5
+    env:
+      SHARED_AUTH_MODE: admin
+      SHARED_ORACLE: "on"
+      SCAN_RESET_TARGET: "on"
+      VERIFY_OOB: "on"
+      VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+      VERIFY_INTERACTSH_DNS: "172.19.0.252"

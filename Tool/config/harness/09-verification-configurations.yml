@@ -1,0 +1,153 @@
+# Optimisation pass 9 — the two verification configurations, over one corpus.
+#
+#   uv run dast harness config/harness/09-verification-configurations.yml --dry-run
+#   uv run dast harness config/harness/09-verification-configurations.yml
+#
+# ~1-2 h. Cost is the open variable and is capped below; the deterministic row
+# is free. Two configs per corpus, one STORED correlation, repeat 2 — nothing
+# here re-scans and nothing re-triages, so the only thing that moves between rows
+# is how verification was configured.
+#
+# PRECONDITION: each corpus named in `run:` must carry triage.json and
+# zap-messages.json. The two sheet-10 baselines below satisfy this.
+#
+# THE HANDLER-SOURCE PRECONDITION IS GONE, AND ITS REPLACEMENT IS AN AXIS.
+# This header used to require a non-empty `handler_source` and cited "601 of 604
+# findings resolve source, 102 with real PHP blocks" on the old WordPress
+# corpus. That count was of context BLOCKS, not of source — `verify` attached a
+# block to every finding, including the ones whose block said no source was
+# attached, and counted those too (fixed 2026-09-04, `verify.count_grounded`).
+# The real figures on the baselines are Gitea 36 of 36 and WordPress 0 of 8. So
+# source availability is not a precondition to satisfy but a property that
+# differs by target, which is precisely why this sheet now runs both.
+#
+# ---------------------------------------------------------------------------
+# THE QUESTION
+#
+#   Verification was rebuilt on 2026-09-02 from three bolted-on pieces into ONE
+#   loop. This sheet compares how verification was configured, on ONE axis:
+#
+#     invocation (HOW the tool is called, and when to stop asking)
+#
+#     deterministic   deterministic invocation   the free control. No key, no
+#                                                 spend, single-shot by nature.
+#     hybrid          llm invocation             the DEFAULT. The deterministic
+#                                                 lookup picks the tool; the model
+#                                                 directs each round.
+#
+#   There used to be a second axis and a third config — full-llm
+#   (VERIFY_TOOL_CHOICE=llm), the model also picking the tool. Its prediction, THE
+#   HYBRID MATCHES FULL-LLM, was the real one: the table and the model named the
+#   same tool 96% of the time (measured 2026-08-29), and every verdict-moving fix
+#   in this project's history was about invocation, never tool choice. That was
+#   accepted on 2026-11-02 and the tool-choice axis was removed as
+#   never-properly-wired and of no measured value (DECISIONS.md, "the tool-choice
+#   axis removed, one axis left"). Tool choice is now always the lookup, so this
+#   sheet is the deterministic-vs-model comparison — the hybrid against the free
+#   control — on that one axis.
+#
+# HOW TO READ IT — do NOT stop at the confirmed count:
+#
+#   1. by_outcome ACROSS the three rows. The deterministic row is the baseline
+#      every other number is a delta against; a run with no deterministic column
+#      makes "the model verifies well" unfalsifiable.
+#   2. summary.loop.flagged_rate — the classification audit. How often the
+#      wrapper's fixed rules and the model read the SAME tool output
+#      differently. This rides free on the model's own calls and is the number
+#      the rebuild exists to produce. Zero would mean the model adds no reading;
+#      a very high rate means one of the two readers is systematically wrong and
+#      the flagged records say which.
+#   3. THE FLAGGED RECORDS THEMSELVES, by hand. `agreement: "flagged"` on each
+#      record, with both verdicts beside it. The two blocked cells (model says
+#      confirmed, wrapper does not) are where the carve-out bites: if the model
+#      turns out to be RIGHT in them, that is the evidence for loosening it, and
+#      it cannot be read off a counter.
+#   4. summary.rounds_used — the histogram. If every loop concludes at round 1,
+#      the loop bought nothing over the old single-shot arm and MAX_ROUNDS is
+#      just cost. A finding settled only at round 2 or 3 is the loop paying for
+#      itself, and its `rounds` trace says what the correction was.
+#   5. Cost per row, and prompt-cache effect. Each round re-sends the
+#      conversation; caching is marked but its benefit has never been measured.
+#      Compare prompt_tokens between hybrid and full-llm.
+#   6. Detection of the CVE markers (uv run ground-truth assess <run>) — the only
+#      correctness measure. Read the STRICT column: this corpus's generous 3/3 is
+#      entirely rule-class collision.
+#
+# GUARDRAILS that must not regress: a `refuted` still means the tool did work
+# (no record may carry reported=refuted with rounds[-1].tool_ran false); no
+# reported `confirmed` without wrapper_verdict=confirmed; cost per run under the
+# ceiling.
+#
+#   THE REBRANDING DECISION HANGS ON THIS SHEET. The data so far points at
+#   verification's honest value being falsification and independent
+#   corroboration rather than a confirmation rate (~1 confirmed finding in the
+#   whole project). If iterative, source-aware invocation can drive real
+#   confirmations of the two reachable WordPress XSS markers, "verification"
+#   keeps its name; if it cannot, the near-zero confirmation rate IS the finding
+#   and the stage is branded falsification. Decide after these numbers.
+# ---------------------------------------------------------------------------
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 3.0
+  timeout_minutes: 60
+  env:
+    # Both baselines are authenticated, and verify threads the session into
+    # every probe — an unauthenticated verification of an authenticated corpus
+    # probes a different application.
+    SHARED_AUTH_MODE: user
+    # Held across every row — the budget decides which findings are reached at
+    # all, and two rows verified under different budgets are not comparable.
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "25"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_OOB: "0"
+
+rows:
+  # ---- Gitea: 36 of 36 dispatched findings carry handler source -----------
+  # Baseline measurement: 0.0% wrapper-vs-model disagreement over 19 findings,
+  # 22 dispatched, 22 refuted, 0 confirmed, and 15 of 22 loops concluding at
+  # round 1. Repeat 2 asks whether that zero is the corpus or the sample.
+  - name: gitea-deterministic
+    target: gitea
+    stages: [verify]
+    run: 20260904T022335Z-gitea-957d97
+    correlation: ""
+    repeat: 2
+    env:
+      VERIFY_INVOCATION: deterministic
+
+  - name: gitea-hybrid
+    target: gitea
+    stages: [verify]
+    run: 20260904T022335Z-gitea-957d97
+    correlation: ""
+    repeat: 2
+    env:
+      VERIFY_INVOCATION: llm
+
+  # ---- WordPress: 0 of 8 carry handler source ------------------------------
+  # And it is the corpus that produced a NON-zero disagreement rate: 26.7%,
+  # 4 of 15 audited, the model downgrading four refutations to inconclusive and
+  # raising no unbacked confirmation. Loops here ran much longer — 7/9/5 across
+  # rounds 1/2/3 against Gitea's 15/6/1 — and still confirmed nothing.
+  - name: wordpress-deterministic
+    target: wordpress
+    stages: [verify]
+    run: 20260904T033933Z-wordpress-43d307
+    correlation: ""
+    repeat: 2
+    env:
+      VERIFY_INVOCATION: deterministic
+
+  - name: wordpress-hybrid
+    target: wordpress
+    stages: [verify]
+    run: 20260904T033933Z-wordpress-43d307
+    correlation: ""
+    repeat: 2
+    env:
+      VERIFY_INVOCATION: llm

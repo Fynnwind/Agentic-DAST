@@ -1,0 +1,67 @@
+# CAMPAIGN · BLOCK 8b · cacti ceiling re-run (completes block-8 to n=6).
+#
+#   uv run dast harness config/harness/campaign-8b-cacti-ceiling.yml --dry-run
+#   uv run dast harness config/harness/campaign-8b-cacti-ceiling.yml
+#
+# WHY. Block-8 landed only 1 of 5 cacti ceiling runs: cacti's web briefly wedges
+# under the heavy oracle+OOB verify, and reset.sh returned before cacti was ready
+# again, so the next runs' 30s auth timed out. reset.sh now has a readiness gate
+# (polls the target's web after restore), so the reset no longer races the scan.
+# This sheet runs the 4 MISSING cacti ceiling repeats to reach n=6 in the post
+# corpus (block-6 1 + block-8 1 + these 4). Same config as block-8's cacti row.
+#
+# Groups with the block-8 cacti ceiling by (target, polarity) in the §10 spread;
+# register BOTH campaign-8-even-fill and campaign-8b-cacti-ceiling as post sheets.
+# cacti's accumulation is off-surface (login log only), so the one non-reset
+# block-6 ceiling run stays valid alongside these --reset-target runs.
+#
+# PREREQUISITE: cacti snapshot already captured (575M, login log truncated). OOB
+# stack (interactsh + dns-resolver) must be up. After: `dast cve` on each run.
+#
+# RISK: cacti ceiling is ~1.9h/run and may still wedge mid-verify; the readiness
+# gate fixes the between-run auth race, not a mid-run hang. ~8h, serial.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 4.0
+  timeout_minutes: 240
+  env:
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  - name: cacti-admin-ceiling
+    target: cacti
+    stages: [scan, triage, verify]
+    repeat: 4
+    env:
+      SHARED_AUTH_MODE: admin
+      SHARED_ORACLE: "on"
+      SCAN_RESET_TARGET: "on"
+      VERIFY_OOB: "on"
+      VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+      VERIFY_INTERACTSH_DNS: "172.19.0.252"

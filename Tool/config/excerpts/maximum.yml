@@ -1,0 +1,45 @@
+name: generous
+description: >
+  The ceiling: every class gets a body, and the reflection and injection classes
+  get roughly three times the `balanced` window. Exists to answer "is `balanced`
+  cutting something the model needed?" — a question that can only be asked
+  against data the scan stored, which is why storage is generous and this file
+  can exist at all.
+defaults:
+  request_headers: all
+  response_headers: all
+  body: head
+  body_chars: 2400
+
+classes:
+  # Still nothing for the header classes: no body can speak to a missing header,
+  # at any size. Widening THIS would be spending tokens to prove the point of
+  # the storage rule rather than to test the excerpt rule.
+  header:
+    body: none
+  cookie:
+    body: none
+  identification:
+    body: none
+
+  xss:
+    body: around-match
+    body_chars: 3000
+  ssti:
+    body: around-match
+    body_chars: 3600
+  sqli:
+    body: error-region
+    body_chars: 3600
+  injection:
+    body: error-region
+    body_chars: 3000
+  disclosure:
+    body: around-match
+    body_chars: 3000
+  redirect:
+    body: head
+    body_chars: 1200
+  traversal:
+    body: head
+    body_chars: 3000

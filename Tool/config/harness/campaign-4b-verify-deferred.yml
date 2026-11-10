@@ -1,0 +1,74 @@
+# CAMPAIGN · BLOCK 4 · PHASE B — the DEFERRED verify work (2026-10-13). Generated.
+# Runs AFTER block 3 (verify -> probes targets; §6) and ALONE (tree-wide cost
+# ceiling). Completes block 4. G5 verify threads `correlation:` to each Phase-A
+# triage rep (out-suffix = row name, so verification-<suffix> sits beside
+# triage-<suffix>). G6 = verification configs on the BASE block-1 triage
+# (correlation "" -> base). Report omitted for G5 reps (rendering, not a spread input).
+#   uv run dast harness config/harness/campaign-4b-verify-deferred.yml
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 150
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7 — same commit as blocks 1-3
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: user
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == G5 blind verify — one row per Phase-A triage rep (4/target) ==========
+  - {name: grafana-user-blind-rep-1, run: 20261012T145740Z-grafana-853739, stages: [verify], correlation: grafana-user-blind-rep-1}
+  - {name: grafana-user-blind-rep-2, run: 20261012T145740Z-grafana-853739, stages: [verify], correlation: grafana-user-blind-rep-2}
+  - {name: grafana-user-blind-rep-3, run: 20261012T145740Z-grafana-853739, stages: [verify], correlation: grafana-user-blind-rep-3}
+  - {name: grafana-user-blind-rep-4, run: 20261012T145740Z-grafana-853739, stages: [verify], correlation: grafana-user-blind-rep-4}
+  - {name: wordpress-user-blind-rep-1, run: 20261012T163157Z-wordpress-ee000d, stages: [verify], correlation: wordpress-user-blind-rep-1}
+  - {name: wordpress-user-blind-rep-2, run: 20261012T163157Z-wordpress-ee000d, stages: [verify], correlation: wordpress-user-blind-rep-2}
+  - {name: wordpress-user-blind-rep-3, run: 20261012T163157Z-wordpress-ee000d, stages: [verify], correlation: wordpress-user-blind-rep-3}
+  - {name: wordpress-user-blind-rep-4, run: 20261012T163157Z-wordpress-ee000d, stages: [verify], correlation: wordpress-user-blind-rep-4}
+  - {name: cacti-user-blind-rep-1, run: 20261012T185327Z-cacti-f049d3, stages: [verify], correlation: cacti-user-blind-rep-1}
+  - {name: cacti-user-blind-rep-2, run: 20261012T185327Z-cacti-f049d3, stages: [verify], correlation: cacti-user-blind-rep-2}
+  - {name: cacti-user-blind-rep-3, run: 20261012T185327Z-cacti-f049d3, stages: [verify], correlation: cacti-user-blind-rep-3}
+  - {name: cacti-user-blind-rep-4, run: 20261012T185327Z-cacti-f049d3, stages: [verify], correlation: cacti-user-blind-rep-4}
+  - {name: gitea-user-blind-rep-1, run: 20261012T211124Z-gitea-2865f0, stages: [verify], correlation: gitea-user-blind-rep-1}
+  - {name: gitea-user-blind-rep-2, run: 20261012T211124Z-gitea-2865f0, stages: [verify], correlation: gitea-user-blind-rep-2}
+  - {name: gitea-user-blind-rep-3, run: 20261012T211124Z-gitea-2865f0, stages: [verify], correlation: gitea-user-blind-rep-3}
+  - {name: gitea-user-blind-rep-4, run: 20261012T211124Z-gitea-2865f0, stages: [verify], correlation: gitea-user-blind-rep-4}
+  # == G5 ceiling verify — one row per ceiling triage rep (2/target, oracle) =
+  - {name: grafana-user-ceiling-rep-1, run: 20261013T000645Z-grafana-6a767a, stages: [verify], correlation: grafana-user-ceiling-rep-1, env: {SHARED_ORACLE: "on"}}
+  - {name: grafana-user-ceiling-rep-2, run: 20261013T000645Z-grafana-6a767a, stages: [verify], correlation: grafana-user-ceiling-rep-2, env: {SHARED_ORACLE: "on"}}
+  - {name: wordpress-user-ceiling-rep-1, run: 20261013T014046Z-wordpress-c48c2d, stages: [verify], correlation: wordpress-user-ceiling-rep-1, env: {SHARED_ORACLE: "on"}}
+  - {name: wordpress-user-ceiling-rep-2, run: 20261013T014046Z-wordpress-c48c2d, stages: [verify], correlation: wordpress-user-ceiling-rep-2, env: {SHARED_ORACLE: "on"}}
+  - {name: cacti-user-ceiling-rep-1, run: 20261013T044218Z-cacti-705417, stages: [verify], correlation: cacti-user-ceiling-rep-1, env: {SHARED_ORACLE: "on"}}
+  - {name: cacti-user-ceiling-rep-2, run: 20261013T044218Z-cacti-705417, stages: [verify], correlation: cacti-user-ceiling-rep-2, env: {SHARED_ORACLE: "on"}}
+  - {name: gitea-user-ceiling-rep-1, run: 20261013T061039Z-gitea-2865f0, stages: [verify], correlation: gitea-user-ceiling-rep-1, env: {SHARED_ORACLE: "on"}}
+  - {name: gitea-user-ceiling-rep-2, run: 20261013T061039Z-gitea-2865f0, stages: [verify], correlation: gitea-user-ceiling-rep-2, env: {SHARED_ORACLE: "on"}}
+  # == G6 verification configs on the BASE block-1 triage (correlation "") ===
+  - {name: grafana-user-blind-vdet, run: 20261012T145740Z-grafana-853739, stages: [verify], repeat: 2, env: {VERIFY_TOOL_CHOICE: table, VERIFY_INVOCATION: deterministic}}
+  - {name: wordpress-user-blind-vdet, run: 20261012T163157Z-wordpress-ee000d, stages: [verify], repeat: 2, env: {VERIFY_TOOL_CHOICE: table, VERIFY_INVOCATION: deterministic}}
+  - {name: cacti-user-blind-vdet, run: 20261012T185327Z-cacti-f049d3, stages: [verify], repeat: 2, env: {VERIFY_TOOL_CHOICE: table, VERIFY_INVOCATION: deterministic}}
+  - {name: gitea-user-blind-vdet, run: 20261012T211124Z-gitea-2865f0, stages: [verify], repeat: 2, env: {VERIFY_TOOL_CHOICE: table, VERIFY_INVOCATION: deterministic}}
+  - {name: grafana-user-blind-vdef, run: 20261012T145740Z-grafana-853739, stages: [verify], repeat: 2, env: {VERIFY_TOOL_CHOICE: table, VERIFY_INVOCATION: llm}}
+  - {name: wordpress-user-blind-vdef, run: 20261012T163157Z-wordpress-ee000d, stages: [verify], repeat: 2, env: {VERIFY_TOOL_CHOICE: table, VERIFY_INVOCATION: llm}}
+  - {name: cacti-user-blind-vdef, run: 20261012T185327Z-cacti-f049d3, stages: [verify], repeat: 2, env: {VERIFY_TOOL_CHOICE: table, VERIFY_INVOCATION: llm}}
+  - {name: gitea-user-blind-vdef, run: 20261012T211124Z-gitea-2865f0, stages: [verify], repeat: 2, env: {VERIFY_TOOL_CHOICE: table, VERIFY_INVOCATION: llm}}
+  - {name: grafana-user-blind-vllm, run: 20261012T145740Z-grafana-853739, stages: [verify], repeat: 3, env: {VERIFY_TOOL_CHOICE: llm, VERIFY_INVOCATION: llm}}
+  - {name: wordpress-user-blind-vllm, run: 20261012T163157Z-wordpress-ee000d, stages: [verify], repeat: 3, env: {VERIFY_TOOL_CHOICE: llm, VERIFY_INVOCATION: llm}}
+  - {name: cacti-user-blind-vllm, run: 20261012T185327Z-cacti-f049d3, stages: [verify], repeat: 3, env: {VERIFY_TOOL_CHOICE: llm, VERIFY_INVOCATION: llm}}
+  - {name: gitea-user-blind-vllm, run: 20261012T211124Z-gitea-2865f0, stages: [verify], repeat: 3, env: {VERIFY_TOOL_CHOICE: llm, VERIFY_INVOCATION: llm}}

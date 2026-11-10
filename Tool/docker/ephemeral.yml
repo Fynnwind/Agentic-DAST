@@ -1,0 +1,61 @@
+# The EPHEMERAL scan-job stack (the ZAP daemon only); it is kept separate from
+# Targets/persistent.yml on purpose and the two must never collapse. → DECISIONS.md.
+#
+# - The orchestrator, report gen and the MCP wrappers run on the host. Noir, Ctags,
+#   curl and the verification tools are one-shot `docker run`s from it, so they need
+#   no service here.
+# - Lifecycle: `docker compose -f docker/ephemeral.yml --env-file config/scanner/.env up -d`
+#   / `... down`, by hand; requires the shared network (`docker network create dast-net`).
+#   `dast scan` restarts the daemon per scan.
+
+# Explicit name: Compose otherwise derives it from the file's directory, and a
+# bare name could let one stack's `down` remove the other's containers.
+name: dast-ephemeral
+
+services:
+  zap:
+    # Pinned BY DIGEST (rescan freeze 2026-10-26): native linux/arm64, daemon
+    # mode driven via REST API — not the baseline/full-scan wrapper scripts. The
+    # digest keeps a background `docker pull` from swapping the image mid-run;
+    # re-confirm with `docker images --digests zaproxy/zap-stable`.
+    image: zaproxy/zap-stable:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
+    container_name: dast-zap
+    # No restart policy: this stack is ephemeral by design.
+    # -Xmx is load-bearing, not tuning: zap.sh otherwise defaults the heap to a
+    # quarter of visible memory, which a real run exhausts — the Insights add-on
+    # then shuts ZAP down at 95% heap and discards the session. → DECISIONS.md.
+    # -silent: no unsolicited requests, including the add-on update check the
+    # daemon otherwise makes at startup — that check is what drifted the add-on
+    # set across the campaign (five distinct sets). With it, the set is exactly
+    # what the frozen plugin volume below provides. → docs/RERUN-PLAN.md §10.2.
+    command: >
+      zap.sh -daemon -silent
+      -host 0.0.0.0 -port 8080
+      -Xmx8g
+      -config api.key=${SCAN_ZAP_API_KEY:?set SCAN_ZAP_API_KEY in config/scanner/.env}
+      -config api.addrs.addr.name=.*
+      -config api.addrs.addr.regex=true
+    # Bound to loopback: the host driver reaches ZAP at localhost:8080 and the
+    # API key is the only auth, so it must not be reachable from the LAN — it is
+    # a proxy/SSRF pivot if reached.
+    ports:
+      - "127.0.0.1:8080:8080"   # REST API, host-only
+    # The chosen, frozen add-on set lives in a pre-populated, read-only named
+    # volume mounted over ZAP's user plugin dir, so the installed set is fixed
+    # and recorded rather than whatever the image bundles or the daemon fetches.
+    # Populate it ONCE (see docs/RERUN-PLAN.md §10.2 / the freeze note); `:ro` so
+    # a run can never mutate it. ZAP's home is /home/zap/.ZAP.
+    volumes:
+      - zap-plugins-frozen:/home/zap/.ZAP/plugin:ro
+    networks:
+      - dast-net
+
+volumes:
+  # Externally created and populated once (`docker volume create
+  # zap-plugins-frozen`), so compose never silently makes an empty one.
+  zap-plugins-frozen:
+    external: true
+
+networks:
+  dast-net:
+    external: true

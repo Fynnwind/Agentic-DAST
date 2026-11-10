@@ -1,0 +1,72 @@
+# CAMPAIGN · BLOCK 7 · code_paths re-triage of wordpress + cacti (follow-up to
+# the code_context fallback, commit 7cab280).
+#
+#   uv run dast harness config/harness/campaign-7-codepaths-retriage.yml --dry-run
+#   uv run dast harness config/harness/campaign-7-codepaths-retriage.yml
+#
+# WHAT THIS IS. Re-triage (NO re-scan) of the two blind reference runs whose
+# code-context resolution the code_paths fallback newly recovers: wordpress
+# 0 -> ~100% and cacti ~43 -> ~57% of candidate endpoints now resolve to handler
+# source. The resolver change is already in `main` and kicks in automatically
+# when Noir named no callees, so re-running triage here just exercises it. The
+# verify + report stages follow so the chain stays coherent and we can see
+# whether the recovered source moves any verdict (it may suppress a false
+# positive the model previously had no source to refute).
+#
+# WHY ONLY WORDPRESS + CACTI. grafana resolves 0 with OR without the fallback
+# (Noir maps its routes to dev-env files, not pkg/api — not fixable this way);
+# gitea already resolved ~94% via callees, so the +6 endpoints are marginal.
+#
+# COMPARISON. Each row writes a `-codepaths`-suffixed triage/verify/report BESIDE
+# the run's stored originals, so the delta is new (fallback) vs frozen (no
+# fallback) on the SAME scan — the only variable is the resolver. The env below
+# mirrors the campaign's standard triage/verify config so nothing else moves.
+# `repeat: 3` samples the synthesis pass (itself 5x internally) for a small band.
+#
+# INPUTS. The promoted §R4 canonical-baseline blind runs (oracle off):
+#   wordpress -> 20260923T154250Z-wordpress-ee000d
+#   cacti     -> 20260923T162308Z-cacti-a88bcd
+# Add more blind runs (campaign-1/2/3) as extra rows if a wider band is wanted.
+#
+# COST. 6 triage+verify+report runs; a few $ (deepseek screening is cents, cacti
+# triage is the pricey/slow one — see the triage-latency note). Re-triaging
+# CHANGES these targets' triage/verify-derived numbers (agreement matrix,
+# refutation counts, synthesis) — that is the point, but those cuts are no
+# longer "frozen" for wordpress + cacti once this runs.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 6.0
+  timeout_minutes: 240
+  env:
+    TRIAGE_CODE_CONTEXT: handler+trace     # the level whose OUTCOME the fallback changes
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""          # preference-routed, served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""             # preference-routed (like synthesis): friendli dropped this model 2026-10-23, and pinning ANY provider disables require_parameters, so OpenRouter must stay free to pick a json_schema-capable one; served provider recorded per call
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  - {name: wordpress-blind-codepaths, run: 20260923T154250Z-wordpress-ee000d, stages: [triage, verify, report], repeat: 3}
+  - {name: cacti-blind-codepaths,     run: 20260923T162308Z-cacti-a88bcd,     stages: [triage, verify, report], repeat: 3}

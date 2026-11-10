@@ -1,0 +1,160 @@
+# The Grafana 8.3.0 target — every Grafana-specific value the pipeline needs.
+# The THIRD target, and the first that is essentially auth-gated: see
+# docs/DECISIONS.md "The third target (Grafana)" for the version pin, the
+# marker cluster, and what an auth-gated surface means for a detection rate.
+#
+# A new target is a sibling DIRECTORY like this one — target.yml, src/, env/ —
+# plus one `include:` line in stacks/persistent.yml; no Python is edited. The
+# one thing Grafana's login forced was a new auth *strategy* (`json`), added once
+# to auth.STRATEGIES and reusable by any JSON-API-login target — the design's own
+# seam for "a login mechanism that differs in kind", honoured rather than branched
+# on the target name.
+#
+# The seeded credentials match env/compose.yml (GF_SECURITY_ADMIN_*) and
+# env/seed-users.sh next door and are TEST-ONLY for the loopback-bound,
+# deliberately-vulnerable local target — fixed and public on purpose so every run
+# authenticates identically.
+
+name: grafana
+
+# URL ZAP and the verification tools reach the target at — the container name on
+# dast-net, not localhost (they run inside their own containers). Grafana listens
+# on 3000 inside the container; the host publishes it on 3001 (Gitea holds 3000),
+# but that host port is irrelevant here — this is the in-network address.
+base_url: http://target-grafana:3000
+
+# Source tree Noir analyses and the SAST baseline reads, relative to the repo
+# root — this target's own clone at the pinned tag:
+#   git clone --depth 1 --branch v8.3.0 \
+#     https://github.com/grafana/grafana targets/grafana/src
+# Grafana is a Go backend (pkg/) with a large TypeScript/React frontend
+# (public/app/); both are analysed, see `source_analysis` and `code_context`.
+source_dir: src
+
+# Values substituted into Grafana's route-template placeholders so a seed is
+# fetchable. Grafana's router (pkg/api/api.go, a custom RouteRegister) names its
+# path params `:pluginId`, `:uid`, `:id`, etc. `pluginId: prometheus` is the one
+# that matters: it is a core datasource plugin present in every install, so the
+# /public/plugins/:pluginId/* asset route — where CVE-2021-43798 lives — resolves
+# to a real plugin. An unknown placeholder falls back to "1" in
+# noir_runner.substitute_path.
+path_vars:
+  pluginId: prometheus
+  uid: "000000001"
+  id: "1"
+  slug: dast-dashboard
+  type: dashboard
+  orgId: "1"
+  userId: "1"
+  teamId: "1"
+  datasourceUid: "000000002"
+  dashboardUid: "000000001"
+  key: "1"
+  name: prometheus
+  category: datasource
+
+# Benign values for Grafana form/query fields, so a reconstructed POST body or a
+# fuzzed query submits the flagged parameter inside a plausible request. Grafana's
+# write surface is overwhelmingly JSON-API rather than HTML forms, so this is
+# deliberately small — the login itself is JSON (see `auth` below), not a form.
+form_fillers:
+  user: admin
+  password: "DastAdminPass123!"
+  query: test
+  q: test
+  type: dashboard
+
+# Grafana's login is a JSON API, not a CSRF-guarded HTML form: a single
+# POST /login of {"user": ..., "password": ...} with an application/json body
+# returns 200 and sets the `grafana_session` cookie, with no token to harvest
+# from a prior GET. `strategy: json` selects the built-in JSON-body login in
+# auth.py (the sibling of `form`); the field names below are Grafana's own
+# (`user`/`password`, not Gitea's user_name/password). The admin bar shows a
+# `Sign out` link only when authenticated.
+#
+# The admin is minted by the container from GF_SECURITY_ADMIN_* (above). Every
+# authenticated *marker* here is reachable as admin — a viewer/editor buys no
+# marker — but the campaign scans every target at none/user/admin (RUN-PLAN
+# decision 3), so `env/seed.sh` also seeds a least-privilege Viewer (`dastviewer`)
+# for the `--auth user` session. Sign-up is disabled, so the account must be
+# seeded rather than self-served. Both log in through the same JSON `/login` flow.
+auth:
+  strategy: json
+  login_path: /login
+  csrf_field: ""
+  username_field: user
+  password_field: password
+  session_cookie: grafana_session
+  logged_in_indicator: "Sign out"
+  # The scan never requests these (see AuthProfile.logout_markers). No Grafana scan
+  # has reached /logout yet, but one request to it ends the session (checked live).
+  logout_markers: ["/logout"]
+  users:
+    - { role: user,  username: dastviewer, password: DastUserPass123! }
+    - { role: admin, username: admin,      password: DastAdminPass123! }
+
+# The independent SAST/SCA static-analysis findings (`dast analyze`), which read
+# `source_dir` above. Not part of the DAST chain — no correlation, no
+# verification, no model. Grafana's backend is Go and its frontend is
+# TypeScript/React (2,500+ .ts/.tsx files), so both rule sets run. OSV-Scanner
+# needs no configuration and here it has the most to find of any target: Grafana
+# ships BOTH a go.mod/go.sum AND a package.json/yarn.lock, so the SCA pass sees
+# dependency CVEs on two ecosystems — the dense counterpart to WordPress's plugin
+# that ships no manifest at all.
+source_analysis:
+  semgrep_rulesets:
+    - go
+    - typescript
+
+# Where this target's route handlers live, for the scoped code extractor that
+# resolves Noir's per-endpoint `callees` to actual source (universal-ctags).
+#
+# `pkg/api` — Grafana's HTTP handlers are methods on *HTTPServer registered in
+# pkg/api/api.go — and no wider, the analogue of Gitea's `routers/web`. The
+# traversal sink itself (hs.getPluginAssets) lives here, in pkg/api/plugins.go.
+# `kinds.Go: f` is functions AND methods: universal-ctags tags a Go method as
+# kind `func`, so `f` captures the `func (hs *HTTPServer) handler(...)` form —
+# verified on pkg/api/plugins.go.
+#
+# A caveat worth stating: Grafana's frontend is TypeScript, but its ROUTES are
+# registered in Go, so the handler source this serves is the Go backend. The
+# frontend XSS markers' sinks are in .ts/.tsx the scoped Go extractor does not
+# index — the same kind of stated limitation as WordPress's view-template sinks
+# that are neither Noir endpoints nor ctags symbols.
+code_context:
+  scope:
+    - pkg/api
+  languages:
+    - Go
+  kinds:
+    Go: f
+
+# Crawlers for this target. Grafana is a React single-page app whose real API
+# surface is fetched by JavaScript at runtime, so the traditional spider — which
+# parses HTML and never executes it — sees almost nothing beyond the login page
+# and the seeded endpoints. `client` drives a real browser (ZAP's own
+# recommendation for modern apps) and exercises the SPA. `traditional` stays
+# first and stays present: it is cheap, it produced the first recorded coverage
+# number on this target, and running it first means the browser crawler starts
+# from a populated tree. Same ordering rationale as the WordPress target.
+spiders:
+  - traditional
+  - client
+
+# Reachability seeds for a sink no crawler discovers now live ON their CVE
+# marker (cve-markers.yml `seed:`) and are seeded ONLY under a scan's --oracle
+# (ceiling) mode. CVE-2021-43798's base
+# (/public/plugins/prometheus/plugin.json) moved to the
+# grafana-plugin-path-traversal marker's `seed:`, so a BLIND run reports it
+# undetected (the honest discovery result — Noir cannot extract Grafana's
+# RouteRegister routes, and the SPA loads plugin assets via runtime chunks the
+# crawler does not follow) and an --oracle run seeds it and detects it (the
+# ceiling). The gap between the two is the measure of what discovery costs.
+
+# Structural parameters: NONE, and the question is answered here on purpose
+# (the NEXT_SESSION checklist asks it of every target). Grafana routes by PATH —
+# /api/dashboards/uid/:uid, /public/plugins/:pluginId/*, /api/datasources/:id —
+# not by a magic query parameter the way WordPress funnels ~90 endpoints through
+# admin-ajax.php?action=<name>. There is no query parameter that is part of a
+# URL's identity here, so no `zap_context.structural_parameters` block: each
+# route is already its own site-tree node.

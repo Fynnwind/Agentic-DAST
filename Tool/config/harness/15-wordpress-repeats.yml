@@ -1,0 +1,66 @@
+# Sheet 15 — the WordPress half of sheet 14, re-run on a stable rule set.
+#
+#   uv run dast harness config/harness/15-wordpress-repeats.yml --dry-run
+#   uv run dast harness config/harness/15-wordpress-repeats.yml
+#
+# ~2.5 h, $0.00 — scan only.
+#
+# WHY THIS EXISTS, AND IT IS A PROCESS FAILURE NOT A NEW QUESTION
+#
+# Sheet 14's Gitea half completed and its answer stands (see DECISIONS.md
+# §"§N7 answered"). Its WordPress half did not get to run as a controlled
+# repeat: between `wordpress-45` #1 and #2, `DEFAULT_DISABLED_RULES` gained the
+# two BETA SOAP rules (90026, 90029) as part of the release-quality filter. The
+# rows would have differed in their rule set as well as in the thing being
+# measured.
+#
+# The practical effect is almost certainly nil — neither rule raised an alert in
+# any run ever recorded here, and WordPress speaks no SOAP — but "almost
+# certainly nil" is the reasoning that produced three retractions in one day.
+# A controlled repeat whose control moved is not a controlled repeat, and
+# arguing about the size of the error is not the same as not having one.
+#
+# The rule set is now stable, so these three rows differ from each other in
+# nothing but the run.
+#
+# WHAT IT ANSWERS
+#
+#   * Is a WordPress scan reproducible? Rows 1 and 2, held fixed, compared to
+#     EACH OTHER — no stored baseline needed. Gitea's answer was that the total
+#     alert count moves 2.2x while the ACTIVE-SCANNER count is identical; the
+#     open question is whether WordPress behaves the same way, because
+#     WordPress is the target with a detection result to protect (1/3).
+#   * §N1: is the second live XSS sink reachable given time? `wordpress-90`,
+#     everything else held. Assess afterwards with
+#     `uv run ground-truth assess <run-id> --data-dir data/harness/<sheet-dir>`.
+#
+# READ, per row: `active_scan_truncated` and `alert_count` from zap-alerts.json,
+# the ACTIVE-SCANNER subset (sourceid 1) which is the layer the CVE markers join
+# against, and `tools.zap.addons` from run-metrics — new as of 2026-09-08, and
+# the reason a rule-set change like the one that forced this sheet is now
+# visible in the artifact instead of only in a commit log.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 0.0
+  timeout_minutes: 130
+  env:
+    SHARED_AUTH_MODE: user
+    ZAP_RESET: restart
+    SCAN_ZAP_MAX_RULE_MINUTES: "5"
+    SCAN_ZAP_MAX_ALERTS_PER_RULE: "-1"
+    SCAN_ZAP_KEEP_SESSION: "0"
+
+rows:
+  - name: wordpress-45
+    target: wordpress
+    stages: [scan]
+    repeat: 2
+    env:
+      SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "45"
+
+  - name: wordpress-90
+    target: wordpress
+    stages: [scan]
+    env:
+      SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "90"

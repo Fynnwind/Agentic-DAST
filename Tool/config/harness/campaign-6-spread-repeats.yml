@@ -1,0 +1,112 @@
+# CAMPAIGN · BLOCK 6 · spread repeats, blind + ceiling (RUN-PLAN §10).
+#
+#   uv run dast harness config/harness/campaign-6-spread-repeats.yml --dry-run
+#   uv run dast harness config/harness/campaign-6-spread-repeats.yml
+#
+# WHAT THIS IS. Top each target's reference config up to SEVEN full-pipeline runs
+# in BOTH polarities — 7 blind (oracle off) and 7 ceiling (oracle on) — so every
+# stage (scan, triage, verify) has n=7 per target per polarity. The one axis is
+# repeat count; it buys per-target SPREAD BANDS at every stage (alert volume,
+# synthesis claim-count, verify counts) and bounds the one flickering marker.
+#
+# INCLUDES WHAT WE ALREADY HAVE. The frozen corpus already carries some of the 7,
+# so only the balance is run here (new runs group with the existing by
+# (target, auth, role) + config digest — the analyzer numbers them as repeats):
+#
+#   target     auth    have blind / ceiling    new blind / ceiling
+#   grafana    user         3 / 1                   4 / 6
+#   gitea      user         3 / 1                   4 / 6
+#   wordpress  admin        1 / 1                   6 / 6
+#   cacti      admin        1 / 1                   6 / 6
+#   -> 44 NEW runs. Est. ~$9 model spend. Time ~32 h serial, ~13 h if the four
+#      targets run in parallel (bound by wordpress-admin, ~65 min/run).
+#
+# AUTH IS PER TARGET, chosen to MAXIMISE reachable markers under the oracle
+# (measured, Thesis-Analyzer): admin reaches the most for cacti (4 vs 1 at user)
+# and wordpress (10 vs 8); grafana (2) and gitea (4) tie between user and admin,
+# so they stay at `user` — no marker lost, and the three existing user-blind G3
+# repeats are reused. Only grafana's CVE-2021-43798 confirms at any level; the
+# rest are reached-unconfirmed, so this bounds spread + the wordpress XSS flicker,
+# it does NOT add confirmed CVEs (RUN-PLAN §9).
+#
+# NOT THE FROZEN CORPUS (bc30e8d). A §10 measurement the author runs; the new runs
+# carry their own ids. For a strict repeat, check out bc30e8d before launching so
+# the code matches; otherwise the new runs sit at a later commit (a minor validity
+# note — the pinned config is identical either way, so the digest groups them).
+# A ceiling is never a detection number and never shares a table with a blind row.
+#
+# PREREQUISITES. P1 user accounts (grafana-user, cacti-user — and admin surfaces
+# for wordpress/cacti), P3 provider slugs, P7 commit. PLUS P9 for the cacti
+# CEILING rows: OOB stack up (`docker compose -f docker/oob.yml up -d`); CONFIRM
+# VERIFY_INTERACTSH_DNS matches the live resolver on dast-net.
+#
+# ENVIRONMENT FRAGILITY (blocks 2-3): 44 back-to-back scans is the sustained load
+# that made cacti deadlock and filled the Docker VM disk (dast-zap). Expect to
+# restart cacti if a scan's auth times out and prune the Docker disk between sets;
+# neither loses data, and the harness can re-run any aborted rows.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 20.0       # ~$9 expected across 44 runs; headroom. NB the ceiling
+                           # sums NEW spend across the whole data tree since start.
+  timeout_minutes: 240
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7 — check out before launch for a strict repeat
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""   # preference-routed, not pinned: baidu failed ~80% of deepseek-v3.2 calls 2026-10-12; served provider recorded per call
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"          # overridden ON for the cacti CEILING row only
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"       # sheet default = blind; ceiling rows flip it ON
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+# ORDER = EXECUTION ORDER (RUN-PLAN §6): grafana, wordpress, cacti, gitea; blind
+# before ceiling within a target. `repeat: N` mints N fresh run ids
+# (`<name>-1`..`-N`); the harness runs rows one at a time, so no verify ever runs
+# beside a scan. Blind runs the full deliverable chain incl. report; a ceiling is
+# not a deliverable, so scan→triage→verify only.
+rows:
+  # == grafana (user: ties admin on reach, reuse 3 existing blind reps) =======
+  - {name: grafana-user-blind,   target: grafana, stages: [scan, triage, verify, report], repeat: 4, env: {SHARED_AUTH_MODE: user}}
+  - {name: grafana-user-ceiling, target: grafana, stages: [scan, triage, verify],         repeat: 6, env: {SHARED_AUTH_MODE: user, SHARED_ORACLE: "on"}}
+
+  # == wordpress (admin: reaches 10 markers vs 8 at user) ====================
+  - {name: wordpress-admin-blind,   target: wordpress, stages: [scan, triage, verify, report], repeat: 6, env: {SHARED_AUTH_MODE: admin}}
+  - {name: wordpress-admin-ceiling, target: wordpress, stages: [scan, triage, verify],         repeat: 6, env: {SHARED_AUTH_MODE: admin, SHARED_ORACLE: "on"}}
+
+  # == cacti (admin: reaches 4 markers vs 1 at user; ceiling confirms the RCE OOB)
+  - {name: cacti-admin-blind, target: cacti, stages: [scan, triage, verify, report], repeat: 6, env: {SHARED_AUTH_MODE: admin}}
+  - name: cacti-admin-ceiling
+    target: cacti
+    stages: [scan, triage, verify]
+    repeat: 6
+    env:
+      SHARED_AUTH_MODE: admin
+      SHARED_ORACLE: "on"
+      VERIFY_OOB: "on"
+      VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+      VERIFY_INTERACTSH_DNS: "172.19.0.252"
+
+  # == gitea (user: ties admin on reach, reuse 3 existing blind reps) =========
+  - {name: gitea-user-blind,   target: gitea, stages: [scan, triage, verify, report], repeat: 4, env: {SHARED_AUTH_MODE: user}}
+  - {name: gitea-user-ceiling, target: gitea, stages: [scan, triage, verify],         repeat: 6, env: {SHARED_AUTH_MODE: user, SHARED_ORACLE: "on"}}

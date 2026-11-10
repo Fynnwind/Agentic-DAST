@@ -1,0 +1,112 @@
+# Optimisation pass 2 — the verdict-loss fix, measured against the same corpus.
+#
+#   uv run dast harness config/harness/reliability.yml --dry-run
+#   uv run dast harness config/harness/reliability.yml
+#
+# ~2 h, ~$0.55. No scan: every row re-triages the corpus pass 1 already paid
+# for, so these rows are directly comparable with the overnight sheet's — same
+# alerts, same findings, same join. That is the point of naming the run.
+
+# ---------------------------------------------------------------------------
+# WHAT PASS 1 (overnight, 2026-08-27) ESTABLISHED
+#
+#   1. CONTEXT DOES NOTHING. ctx-none / siblings / full gave `both` means of
+#      12.7 / 13.3 / 12.7 with a within-level spread of 9-16, and 1-2
+#      shared-handler contradictions at every level. The effect is far smaller
+#      than the noise. THAT QUESTION IS ANSWERED — no context rows here.
+#
+#   2. THE CHEAP MODEL WAS SILENTLY LOSING A FIFTH OF ITS VERDICTS.
+#      deepseek-v4-flash: 51-87 of 286 findings came back with NO verdict, on
+#      every one of the ten runs, while reporting `failed_calls: 0`.
+#      qwen3-235b lost 2 of 286. The calls succeeded; the answers were short.
+#      Nothing enforced "one verdict per alert" — the response schema said it in
+#      a description and had no minItems/maxItems.
+#
+#   3. EVERY AGREEMENT NUMBER SO FAR RESTS ON THAT. With ~22% of verdicts
+#      missing at random, `both` / `deterministic-only` and the self-consistency
+#      denominators were all measured over a varying subset. The spread that
+#      made context look like noise may BE this.
+#
+# WHAT CHANGED SINCE
+#
+#   * The per-call schema now pins minItems == maxItems == len(chunk), so a
+#     provider under strict structured output must return one verdict per alert.
+#   * Whatever still comes back short is re-asked once, for exactly the missing
+#     finding ids, and a still-missing verdict is counted as `partial_answer`
+#     instead of vanishing.
+#
+# THE QUESTION THIS SHEET ASKS
+#
+#   Does the fix close the gap — and once denominators are honest, is the
+#   expensive model still worth 3.2x?
+#
+#   Read `llm_findings_unanswered` first. If deepseek is now near zero, every
+#   number in pass 1 needs re-reading and the `both` / `llm-only` columns become
+#   comparable for the first time. If it is still ~60, the loss is the model
+#   refusing to answer rather than a missing contract, and the next lever is
+#   chunk size (MAX_ALERTS_PER_CALL) or a smaller-but-stricter prompt.
+# ---------------------------------------------------------------------------
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  # A real ceiling now that one exists. Generous — it is here to stop a mistake
+  # running all night, not to shape the result. -1 would mean none.
+  max_cost_usd: 2.00
+  env:
+    SHARED_AUTH_MODE: none
+    # Context is settled; hold it at the default so it is not a second variable.
+    TRIAGE_PEER_CONTEXT: full
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+
+rows:
+  # ---- 1. does the fix close the loss? ------------------------------------
+  # The same configuration pass 1 ran ten times, now with the contract enforced.
+  # Three repeats, because this row is also the new variance yardstick: pass 1's
+  # spread was measured over lossy runs and cannot be reused.
+  - name: fixed-cheap
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+      TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+
+  # ---- 2. is the expensive model still ahead on honest denominators? -------
+  # n=1 in pass 1, and it was the only row whose numbers were not distorted by
+  # the loss — so it is the one row that needs repeating rather than trusting.
+  - name: fixed-big
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      TRIAGE_SCREENING_MODEL: qwen/qwen3-235b-a22b-2507
+      TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+
+  # ---- 3. does pass 2 benefit from a stronger model? ----------------------
+  # Pass 1's `synthesis-big` row was never a fair test: its *triage* was the
+  # lossy cheap model, so pass 2 was reading a corpus with a fifth of the
+  # verdicts missing. With triage fixed, this asks the question for the first
+  # time. One call per run, so an expensive model here is affordable by design.
+  - name: synthesis-big
+    stages: [triage]
+    run: 20260827T012512Z-gitea-d5fdc8
+    env:
+      TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+      TRIAGE_SYNTHESIS_MODEL: qwen/qwen3-235b-a22b-2507
+
+  # ---- 4. does any of it change what gets verified? -----------------------
+  # Triage is upstream of dispatch, so a model that flags differently should
+  # dispatch differently. Verify + report on the two candidates, so the
+  # difference is visible in confirmed/refuted rather than only in `both`.
+  - name: end-to-end-cheap
+    stages: [triage, verify, report]
+    run: 20260827T012512Z-gitea-d5fdc8
+    env:
+      TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+
+  - name: end-to-end-big
+    stages: [triage, verify, report]
+    run: 20260827T012512Z-gitea-d5fdc8
+    env:
+      TRIAGE_SCREENING_MODEL: qwen/qwen3-235b-a22b-2507

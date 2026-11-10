@@ -1,0 +1,187 @@
+# Baseline — what the whole pipeline does, end to end, before anything is tuned.
+#
+#   uv run dast harness config/harness/10-baseline.yml --dry-run
+#   uv run dast harness config/harness/10-baseline.yml
+#
+# ~2-4 h, under ~$0.50. Two rows, one per target, each the FULL chain at the
+# settled defaults and a realistic scan budget. It answers no question on its
+# own — that is the point. It produces the corpus every later sheet interrogates
+# and the numbers every later sheet is a delta against.
+#
+# PREREQUISITES, all of them:
+#   * both persistent targets up, and seeded — WordPress needs seed-site.sh,
+#     seed-users.sh and seed-content.sh to have run, or `--auth user` has no
+#     account to log in as;
+#   * source trees present for both (Noir and ctags read them):
+#     targets/gitea/src and targets/wordpress/src;
+#   * the pinned nuclei template volume populated, or every nuclei probe comes
+#     back `inconclusive: ran no templates` and refutes nothing;
+#   * `uv run dast harness config/harness/10-baseline.yml --dry-run` clean;
+#   * ENOUGH MEMORY FOR THE DAEMON. ZAP runs `-Xmx8g` (load-bearing, see
+#     docker/ephemeral.yml) and a Gitea run's documented peak is 10.4 GB, inside
+#     a Docker VM that had 14.6 GB on 2026-09-05 — when the Gitea row was
+#     OOM-killed at 92% of its active scan. Check `docker info` MemTotal and
+#     that nothing large is sharing the VM before starting a 2-4 hour sheet.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS SHEET EXISTS, AND WHY IT IS SEPARATE FROM SHEET 09
+#
+#   The verification layer was rebuilt on 2026-09-02 and its first live numbers
+#   were taken against corpora that predate three changes to what a scan even
+#   contains: the Noir PHP filter, the declared `seed_paths`, and working
+#   authenticated login. Optimising against those corpora would be tuning
+#   against a target that has already moved.
+#
+#   So: sheet 10 MAKES the corpus, sheet 09 INTERROGATES it. Keeping them apart
+#   matters, because a scan is expensive and is not the variable — every
+#   configuration question worth asking is asked of a *stored* run, repeated,
+#   and this sheet is the one thing that has to be paid for once.
+#
+# RE-RUN 2026-09-05, AND WHY THIS ONE IS NOT THE SAME BASELINE
+#
+#   Three changes since the first run mean its corpus and this one's are not
+#   interchangeable, and the WordPress half is not comparable at all:
+#
+#   * `action` is now a ZAP STRUCTURAL PARAMETER on WordPress (§P3). Measured,
+#     91 seeded requests were 15 site-tree nodes and are now 56, and
+#     admin-ajax.php went from 1 alerting URL to 42. This is the deliberate
+#     re-baseline that change made necessary; the old WordPress row is a record
+#     of the old scan surface and nothing more.
+#   * The DECLARED-SIGNAL comparator was fixed (§P4) and `verify.v2` now tells
+#     the model what its signal is checked against. Every `summary.loop.signals`
+#     number before 2026-09-05 is an artefact, so this is the first baseline
+#     whose signal column means anything.
+#   * ZAP rule 10031's routing, the per-rule cap and the sibling machinery are
+#     unchanged for this sheet — siblings are OFF, see the row env below.
+#
+#   The interesting question for the WordPress row is NOT whether the numbers
+#   moved. It is whether the ACTIVE scanner reaches the two live XSS sinks at
+#   all now that the tree is wider: they were previously undetected for a
+#   scan-SCALE reason (rule 40012 never completed inside the budget), and a
+#   wider tree makes that worse before it makes it better. If they stay
+#   undetected, the honest finding is that the structural parameter widened the
+#   surface past what a 45-minute budget can scan — and the two must be reported
+#   together, not as one improvement and one regression.
+#
+# WHY AUTHENTICATED
+#
+#   Most of both targets' reachable CVEs sit behind login — Gitea's cluster, the
+#   WPDM SQLi — and `--auth` is the single biggest lever on detection rate. Every
+#   number this project has carried so far came from a session-less default,
+#   which is not what a real DAST run against an app with a login looks like.
+#
+#   An authenticated scan CHANGES THE ATTACK SURFACE (the login page's own
+#   parameters disappear), so these runs are their own baseline and are never
+#   mixed with the unauthenticated history. That history stays on disk as the
+#   anchor it always was; it is not what the loops will be measured against.
+#
+# WHAT TO RECORD AS THE BASELINE — read all of it, not the headline
+#
+#   1. `uv run run-index` — wall time and cost per stage, per target. This is
+#      the "does it fit in a CI job" number the thesis argues about, and it has
+#      never been taken at a realistic budget on a fresh authenticated corpus.
+#   2. `uv run ground-truth assess <run>` for each — detection per layer, BOTH
+#      bounds. Read the STRICT column: the generous one counts a rule of the
+#      right class firing anywhere, and on WordPress that has been 100%
+#      coincidence. Check specifically whether `/?__wpdmxp=1&frameid=1` is in
+#      the tree at all now — `seed_paths` was added for it and has never run.
+#   3. `summary.loop` in each verification artifact — the wrapper-vs-model
+#      disagreement rate, the rounds histogram, and the declared-signal counts.
+#      A rounds histogram that is all 1s means the loop bought nothing over a
+#      single-shot probe on this corpus.
+#   4. The correlation `summary.agreement` columns, as sheets 01-08 read them.
+#   5. Cost per stage AND `cached_prompt_tokens` — 66-80% of the verification
+#      loop's prompt was served from cache in the first measurements, and pull
+#      mode's share is still unmeasured.
+#
+# GUARDRAILS: `llm_findings_unanswered` near 0, self-consistency contradictions
+# 0-2, no verification record with reported=refuted whose final round did not
+# actually run.
+#
+#   DO NOT tune anything from this sheet. It has one row per target and no
+#   repeats, so every number in it is a single sample — and this project has
+#   now measured, twice, that a single sample of an LLM judgement is not a
+#   measurement. It is the corpus and the order of magnitude, nothing more.
+# ---------------------------------------------------------------------------
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 2.0
+  timeout_minutes: 150
+  env:
+    # The lever, and the reason this baseline is not comparable with the
+    # unauthenticated history.
+    SHARED_AUTH_MODE: user
+    # Restart the daemon before every row. A sheet's rows are meant to be
+    # independent experiments, and a session reset does not make them so:
+    # measured 2026-09-04, the WordPress row that ran immediately after Gitea's
+    # 30-minute scan (10.4 GB peak, same daemon) did 109 seconds of active
+    # scanning and raised ZERO alerts, against 1,364s/123 for the same
+    # configuration on an idle daemon. Both reported `complete`. 11 seconds is
+    # a small price for rows that mean what they say.
+    ZAP_RESET: restart
+    # A realistic nightly-CI budget rather than a smoke budget. Measured: a
+    # 12-minute WordPress scan reached 32% of the tree and a 30-minute one spent
+    # its whole budget on 40018 false positives before the reflected-XSS rule
+    # ran at all.
+    SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "45"
+    SCAN_ZAP_MAX_RULE_MINUTES: "5"
+    # Everything below is the settled default, pinned here so the baseline says
+    # what it was rather than inheriting whatever .env holds later.
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    # Verification at its DEFAULT configuration — the hybrid. Sheet 09 is where
+    # the three configurations are compared; here it is simply what the pipeline
+    # does when nobody has chosen.
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_OOB: "0"
+    # The propagation dispatch stays OFF in a baseline. It is off by default for
+    # exactly this reason — it changes what a verify run contains, so a baseline
+    # carrying it would not be comparable with the corpus every earlier sheet
+    # interrogates. Turn it on in a sheet that is asking about it.
+    VERIFY_MAX_SIBLINGS: "0"
+    # And oracle-guided mode is off: a baseline is the BLIND number by
+    # definition, and sheet 13 is where the ceiling is measured against it.
+    SHARED_ORACLE: "off"
+    # Prompt versions pinned, for the same reason as everything above: "newest
+    # on disk" is what .env holds, and a baseline must say what it sent rather
+    # than what happened to be current. `verify` is v2 from 2026-09-05, which
+    # tells the model what its declared signal is actually checked against —
+    # this is the first baseline to send it.
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+
+rows:
+  # WORDPRESS FIRST, and the order is deliberate rather than alphabetical.
+  #
+  # It is the row §P3 made necessary — its scan surface changed and its old
+  # numbers describe a corpus that no longer exists — while Gitea's scan path is
+  # untouched by that work, so Gitea's previous numbers still describe current
+  # code. If only one row survives, this is the one that has to.
+  #
+  # And Gitea is the row that puts the daemon under memory pressure: on
+  # 2026-09-05 its 45-minute authenticated scan OOM-killed the ZAP container at
+  # 92% of the active scan (exit 137, `-Xmx8g` inside a 14.6 GB Docker VM,
+  # documented peak 10.4 GB), which then took the WordPress row down with it —
+  # `Connection refused`, nothing scanned, both rows lost. Running the fragile
+  # row second means a repeat costs one row instead of two.
+  - name: wordpress-baseline
+    target: wordpress
+    stages: [scan, triage, verify, report]
+
+  - name: gitea-baseline
+    target: gitea
+    stages: [scan, triage, verify, report]

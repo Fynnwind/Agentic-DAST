@@ -1,0 +1,96 @@
+# THE SCAN BASELINE — the four-target scan corpus, produced without a key.
+#
+#   uv run dast harness config/harness/scan-baseline.yml --dry-run
+#   uv run dast harness config/harness/scan-baseline.yml
+#
+# This is a DRAFT (no number yet); number it `NN-scan-baseline.yml` when run.
+#
+# WHY IT EXISTS, BESIDE canonical-baseline.yml. The canonical sheet carries the
+# WHOLE chain (`scan triage verify report`) and so cannot run without the
+# OpenRouter key. `dast scan` needs no key — only SCAN_ZAP_API_KEY, which the
+# ephemeral ZAP job already shares. This sheet is the FREE, key-less half: it
+# scans all four targets FRESH, on the settled code, at the realistic nightly-CI
+# budget, and stores one blind scan corpus per target. The expensive, slow part
+# of a run (a 45-minute active scan against a live target) is done here and once;
+# the key-spending stages read that corpus OFF DISK afterwards and never re-scan.
+#
+# THE HAND-OFF. Each row mints a run directory with the three scan artifacts
+# (zap-alerts / noir-ai-context / noir-seed-map). Complete it later, once
+# `config/scanner/secrets.env` holds the key, with a triage+verify sheet that
+# names these run ids (the sheet-11/12 pattern) or by hand:
+#     uv run dast triage <run> && uv run dast verify <run> && uv run dast report <run>
+# That is byte-for-byte the corpus canonical-baseline.yml would have scanned —
+# the ONLY reason to run the canonical sheet instead is to take scan+triage+verify
+# as one unbroken run, which matters when the key is in place from the start.
+#
+# THE ROWS mirror canonical-baseline.yml's four BLIND baselines exactly — same
+# targets, same per-target auth, same blind (oracle-off) scan budget — so the
+# corpus is interchangeable with that sheet's Phase 1. The oracle CEILINGS are
+# NOT here: an `--oracle` scan reseeds sinks and is only meaningful paired with
+# the key-spending stages that read them, so it belongs with the paid sheet.
+#
+# PREREQUISITES (scan-only subset of canonical-baseline.yml's):
+#   * All four persistent targets up on 8000-8003 AND SEEDED (a container
+#     predating the port remap needs `... up -d --force-recreate`, then its
+#     env/seed scripts — the rename dropped the bind-mount state once already).
+#   * The ephemeral ZAP job up (docker/ephemeral.yml, `-Xmx8g`), restarted fresh
+#     so its site tree is not carried between baselines.
+#   * Source trees present for all four (Noir + ctags read them): Targets/<name>/src.
+#   * `--dry-run` clean.
+#
+# GUARDRAILS: no model spend is possible here (no LLM stage), so max_cost_usd is
+# a pure mistake-guard. Gitea's AUTHENTICATED scan is the memory-fragile one
+# (10.4 GB peak, OOM-killed once at 92%); it runs LAST so the other three
+# corpora are safely on disk before the risky row. Do not tune from this sheet —
+# it is one scan per target, the corpus, not a measurement.
+
+defaults:
+  base_env: config/scanner/.env
+  # No LLM stage runs, so this can never be approached; it is here only to stop a
+  # misconfigured row that somehow dispatched a model from running unbounded.
+  max_cost_usd: 0.5
+  # Cacti's 342-endpoint scan is the worst row (Noir + a 45-min active scan +
+  # spider); the others are shorter. Sized for it with headroom.
+  timeout_minutes: 90
+  env:
+    # The realistic nightly-CI scan budget (canonical-baseline.yml's, measured).
+    SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "45"
+    SCAN_ZAP_MAX_RULE_MINUTES: "5"
+    # Blind: no oracle seeding. The promoted corpus is the blind default.
+    SHARED_ORACLE: "off"
+
+rows:
+  # Grafana — auth-gated (`--auth admin`; sign-up is disabled, so a scan cannot
+  # mint its own account). Its target.yml runs both spiders (traditional then
+  # the client crawler needed for the React SPA).
+  - name: grafana-scan
+    target: grafana
+    stages: [scan]
+    env:
+      SHARED_AUTH_MODE: admin
+
+  # WordPress — `--auth user` (the authenticated scan reaches wp-admin, where its
+  # one DAST-reachable marker's sink lives).
+  - name: wordpress-scan
+    target: wordpress
+    stages: [scan]
+    env:
+      SHARED_AUTH_MODE: user
+
+  # Cacti — UNAUTH (the flagship CVE-2022-46169 is unauth). Its target.yml already
+  # sends `X-Forwarded-For: 127.0.0.1` past remote_agent's poller check. The most
+  # expensive scan (342 endpoints) — the row the timeout is sized for.
+  - name: cacti-scan
+    target: cacti
+    stages: [scan]
+    env:
+      SHARED_AUTH_MODE: none
+
+  # Gitea — `--auth user`. Runs LAST of the four: its authenticated scan is the
+  # memory-fragile one (10.4 GB peak, OOM-killed once), so a repeat costs one row
+  # and the other three corpora are already safely on disk.
+  - name: gitea-scan
+    target: gitea
+    stages: [scan]
+    env:
+      SHARED_AUTH_MODE: user

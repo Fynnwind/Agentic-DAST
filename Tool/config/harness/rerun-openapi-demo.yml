@@ -1,0 +1,74 @@
+# DEMO · FR-06 at the frozen configuration: Gitea's OpenAPI spec seeded into the scan.
+# A labeled demonstration, NOT a corpus cell. It replaces the carried-over October run
+# (data/runs/20261019T211339Z-gitea-9fcc38: pre-freeze, a 15-min active-scan cap, and
+# admin from before the session fixes, so whether its session held is unknown).
+# Author's decision of 2026-11-09, superseding RERUN-PLAN §10 decision 6 ("carry over").
+#
+#   ./Targets/net-no-egress.sh            # from Implementation/, as before every sheet
+#   # uncomment the two `openapi:` lines in Targets/gitea/target.yml (this run ONLY)
+#   uv run dast harness config/harness/rerun-openapi-demo.yml
+#   # comment them out again right after, before any other Gitea scan
+#
+# WHAT IT IS. G1's Gitea admin-blind cell (rerun-g1-gitea-admin.yml, run
+# 20261104T152843Z-gitea-0614b6: 325 URLs after seeding, 1,365 before the active
+# scan) with ONE difference:
+# the target imports Gitea's Swagger 2.0 spec (/swagger.v1.json, basePath /api/v1)
+# into the seed tree. Scan stage only, so no model calls (~$0); about 60–75 min.
+# The spec is a target property, not run config, so it is NOT in the run-id digest:
+# this run carries G1's digest (0614b6). This sheet's name, its row name and the
+# `openapi_import` stage in scan-metrics.json are what mark it. The thesis analyzer
+# pins its sheets by name, so the run cannot join a corpus count.
+#
+# WRITE SAFETY. The spec declares DELETE/POST/PATCH routes. Gitea 1.16's API
+# refuses a write made with a session cookie that has no CSRF token (reqToken →
+# RequireCSRF, routers/api/v1/api.go:195), and the scan's session is a cookie.
+# Gitea's destructive_markers match anywhere in the URL, so /admin/hooks,
+# /admin/users/ and /settings also block their /api/v1 counterparts, and dast-net
+# has no internet access. The target is reset before the scan, and SessionWatch
+# records whether the session held to the end.
+#
+# READOUT. scan-metrics.json: stages.openapi_import (specs, routes) and the seed
+# stage's openapi_seeds; urls after seeding and before the active scan against
+# 0614b6's 325 and 1,365;
+# session_held_to_end; scan-noir-seed-map.json entries whose source starts with
+# the spec; alerts on /api/v1 paths in scan-zap-alerts.json.
+#
+# Defaults and row env are G1's Gitea admin cell, unchanged (pinned by
+# tests/unit/test_rerun_sheets.py); the row drops triage, verify and report.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 240
+  env:
+    # freeze commit: rerun-2026-11-03f
+    SCAN_RESET_TARGET: "on"
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "20"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "150"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  - {name: gitea-admin-openapi, target: gitea, stages: [scan], env: {SHARED_AUTH_MODE: admin}}

@@ -1,0 +1,49 @@
+# CAMPAIGN · BLOCK 5 · G8c CONTROL RE-RUN — Opus 5.5 verify on gitea, run with
+# verify_loop.ROUND_MAX_TOKENS raised 24576 -> 65536 to TEST a hypothesis (author,
+# 2026-10-14). NEGATIVE RESULT: the raise changed nothing — frver3 is
+# dispatched 16 / refuted 16 / 0 confirmed, the SAME ~5-6 findings go not-attempted as
+# in frver2, and completion was only ~12k tokens (far under either ceiling). So the
+# empty/not-answered findings are NOT token-budget truncation; Opus emits output the
+# loop's JSON-schema contract can't use (empty content / answer in the reasoning
+# channel / invalid tool enum). The ceiling raise was reverted as a no-op; the pinned
+# source is back at 24576. Kept as the control run that falsified the budget hypothesis.
+# re-runs ONLY verify, suffix -frver3, coexisting with frver2 in the ref run dir.
+#   uv run dast harness config/harness/campaign-5-g8-gitea-opus-frver3.yml --dry-run
+#   uv run dast harness config/harness/campaign-5-g8-gitea-opus-frver3.yml
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 7.0         # clean pass dispatches + reasons more than frver2's $2.58.
+  timeout_minutes: 120
+  env:
+    # campaign commit: bc30e8d7b4fce15618b9081a76213d4ebfaae8ac   # P7 (+ ROUND_MAX_TOKENS fix)
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: friendli
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: user
+    SHARED_RUN_MAX_COST_USD: "7.0"
+
+rows:
+  # G8c clean — frontier VERIFICATION on the base gitea triage (selected 30 + 11
+  # correlated), per-round ceiling now 65536 so Opus can reason AND answer.
+  - {name: gitea-user-blind-frver3, run: 20261012T211124Z-gitea-2865f0, stages: [verify], env: {VERIFY_MODEL: anthropic/claude-opus-5.5, VERIFY_PROVIDER: ""}}

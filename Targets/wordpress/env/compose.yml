@@ -1,0 +1,130 @@
+# The WordPress target's own services. Pulled into the persistent stack by
+# `include:` in stacks/persistent.yml, which is what makes adding a target one
+# new directory plus one include line.
+#
+# `include:` (not `-f a.yml -f b.yml`) on purpose: with include, every relative
+# path below resolves against THIS file's directory, so `./data` means
+# targets/wordpress/env/data. Passing two -f files instead would resolve both
+# against the FIRST file's directory, silently pointing these bind mounts at
+# targets/data — an empty WordPress with no visible cause.
+#
+# Two services rather than Gitea's one, because WordPress has no embedded
+# database. That is the whole of the difference; the stack split, the network
+# and the loopback binding are unchanged.
+#
+# The credentials below are TEST-ONLY for a deliberately-vulnerable target bound
+# to loopback. They are fixed and public in the repo on purpose so every run
+# reaches the same instance — do not reuse them anywhere real.
+
+services:
+  wordpress-db:
+    # MariaDB 10.6 LTS, arm64-native, contemporaneous with core 5.8. Pinned to a
+    # patch tag: `10.6` is a series tag that moves.
+    # Pinned by digest (rescan freeze 2026-10-26); `docker images --digests mariadb`.
+    image: mariadb:10.6.22@sha256:7589b386fa6686a5d5f131b504ed21c81e492c48b78c6c4be0d5be1066542559
+    container_name: target-wordpress-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: dast-root
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: dast-wordpress
+    volumes:
+      # This target's database state, beside its definition and seed scripts.
+      - ./data/db:/var/lib/mysql
+    healthcheck:
+      # The web container starts before the database is accepting connections
+      # otherwise, and WordPress's entrypoint does not retry — the install then
+      # fails with "Error establishing a database connection" on first boot only,
+      # which is exactly the kind of intermittent setup failure that costs an
+      # hour to attribute.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pdast-root"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - dast-net
+
+  wordpress:
+    # Pinned to 5.8.0 — the FIRST 5.8 release, so every security fix from
+    # 5.8.1-5.8.3 is present unpatched (the same construction as Gitea 1.16.0).
+    #
+    # NEVER `wordpress:5.8-apache`: that is a series tag and Docker Hub moved it
+    # to 5.8.3, which is the very release that fixes the core cluster this pin
+    # exists to keep. The `-php7.4` half pins the interpreter too, so a rebuilt
+    # image cannot silently change PHP under the target.
+    # Pinned by digest (rescan freeze 2026-10-26); `docker images --digests wordpress`.
+    image: wordpress:5.8.0-php7.4-apache@sha256:067833b1827e3f035c2c6b4be5336bf5bef498dafeb4f2d18258e439fa90c6f7
+    container_name: target-wordpress
+    restart: unless-stopped
+    depends_on:
+      wordpress-db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: target-wordpress-db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: dast-wordpress
+      WORDPRESS_TABLE_PREFIX: wp_
+      # WP_HTTP_BLOCK_EXTERNAL keeps the target off the network during a scan:
+      # update checks and the dashboard's news widgets otherwise add seconds of
+      # outbound latency to requests ZAP is timing, and make the target's
+      # behaviour depend on wordpress.org being reachable. The plugin is
+      # installed from a local zip precisely so this can stay on.
+      #
+      # The site URL is deliberately NOT set here as WP_HOME/WP_SITEURL. It is a
+      # database option, written once by `wp core install --url=...` in
+      # seed-site.sh. The constants would override it — and because this image
+      # `eval`s WORDPRESS_CONFIG_EXTRA from the environment on *every* request
+      # rather than baking it into wp-config.php, the one-shot WP-CLI container
+      # would not see them and would then disagree with the running site about
+      # what the site's own URL is.
+      #
+      # It still has to be the container name rather than localhost: WordPress
+      # canonical-redirects any request whose Host disagrees with its configured
+      # URL (Gitea does not), so the scan path — container to container on
+      # dast-net — is what the URL has to name, or ZAP is bounced to a host it
+      # cannot resolve and collects redirects instead of pages.
+      #
+      # To browse it from the host, make the host resolve that same name rather
+      # than changing the name (see the port list below):
+      #   echo '127.0.0.1 target-wordpress' | sudo tee -a /etc/hosts
+      #   open http://target-wordpress/
+      # The Host header then matches and no redirect fires. Without the hosts
+      # entry, http://127.0.0.1:8001 still redirects; it remains usable with an
+      # explicit Host header:
+      #   curl -H 'Host: target-wordpress' http://127.0.0.1:8001/
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_HTTP_BLOCK_EXTERNAL', true);
+        define('AUTOMATIC_UPDATER_DISABLED', true);
+        define('WP_AUTO_UPDATE_CORE', false);
+    volumes:
+      # The running install: core files the image copies in on first boot, plus
+      # uploads and the pinned plugin the seed scripts put there. Runtime state,
+      # gitignored — the *source* Noir reads is targets/wordpress/src.
+      - ./data/html:/var/www/html
+    # Bound to loopback: the scan path is container-to-container over dast-net
+    # (ZAP reaches WordPress by name), so publishing to all interfaces would only
+    # expose a deliberately-vulnerable target to the LAN for no functional gain.
+    ports:
+      # 8001, not 8080: the ephemeral stack's ZAP daemon already publishes
+      # 127.0.0.1:8080, and the two stacks are meant to be up at the same time.
+      - "127.0.0.1:8001:80"   # HTTP (scan surface), host-only
+      # Port 80 as well, purely so a HOST BROWSER can reach the site at the URL
+      # WordPress believes it has. The configured URL is `http://target-wordpress`
+      # with no port, so a canonical redirect always lands on port 80 — a hosts
+      # entry alone would bounce to a closed port. With both this line and
+      # `127.0.0.1 target-wordpress` in /etc/hosts, http://target-wordpress/
+      # opens in a browser with no redirect.
+      #
+      # This changes nothing about scanning: ZAP reaches the target by container
+      # name over dast-net, where Docker's own DNS resolves it, and the host's
+      # /etc/hosts is invisible to containers. Still loopback-only, so a
+      # deliberately-vulnerable target is not exposed to the LAN.
+      - "127.0.0.1:80:80"     # HTTP (browser convenience), host-only
+    networks:
+      - dast-net
+
+networks:
+  dast-net:
+    external: true

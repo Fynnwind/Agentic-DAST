@@ -1,0 +1,51 @@
+# RESCAN · cacti ceiling — SOLO re-run of the one row that failed in
+# rerun-ceiling-smoke.yml (2026-10-27), to test whether the reset-settle race
+# reproduces. Identical config to that sheet's cacti-admin-ceiling row + defaults;
+# SCAN_RESET_TARGET on so it exercises the real rescan path (reset → seed). Not a
+# corpus sheet; a single functional re-check on the frozen stack (tag
+# rerun-2026-11-03f).
+#
+#   uv run dast harness config/harness/rerun-cacti-ceiling-solo.yml
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 12.0
+  timeout_minutes: 240
+  env:
+    SCAN_RESET_TARGET: "on"
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "20"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "150"
+    VERIFY_MAX_SIBLINGS: "0"
+    VERIFY_OOB: "off"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "on"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  - name: cacti-admin-ceiling
+    target: cacti
+    stages: [scan, triage, verify]
+    env:
+      SHARED_AUTH_MODE: admin
+      VERIFY_OOB: "on"
+      VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+      VERIFY_INTERACTSH_DNS: "172.19.0.252"

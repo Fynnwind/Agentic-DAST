@@ -1,0 +1,25 @@
+%% The headline structure: triage's two arms feed verification's two axes.
+%% Arms are kept independent (anti-circularity); axes are orthogonal knobs.
+flowchart LR
+    finding(["a finding<br/>(ZAP alert ↔<br/>Noir endpoint)"])
+    subgraph triage["triage — two independent arms"]
+        direction TB
+        det["<b>deterministic arm</b><br/>rescan table · plugin id × confidence<br/>(control, no model)"]
+        subgraph llm["LLM arm — two passes"]
+            direction LR
+            p1["pass 1: screening<br/>one call per endpoint"]
+            p2["pass 2: synthesis<br/>one whole-corpus call<br/>cross-endpoint claims"]
+        end
+    end
+    finding --> det
+    finding --> llm
+    det -. "never told<br/>the other's verdict" .- llm
+    subgraph verify["verify — one loop,<br/>two orthogonal axes"]
+        direction TB
+        choice["<b>tool choice</b><br/>table | llm<br/>(WHICH tool)"]
+        invoc["<b>invocation</b><br/>deterministic | llm<br/>(HOW it is called)"]
+    end
+    det --> verify
+    llm --> verify
+    choice --> outcome(["confirmed /<br/>refuted /<br/>inconclusive /<br/>not-attempted"])
+    invoc --> outcome

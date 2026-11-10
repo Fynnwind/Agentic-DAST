@@ -1,0 +1,92 @@
+# Optimisation pass 7 — does the model finally out-triage the table once it has
+# the handler's actual source?
+#
+#   uv run dast harness config/harness/07-code-context.yml
+#
+# ~3-7 h, ~$0.3-0.8. Three rows, one configuration, one stored corpus, repeat 3.
+#
+# PRECONDITION, checked by the loop before this sheet runs: the corpus named in
+# `run:` must carry `zap-messages.json` (the message sidecar), and
+# `uv run dast triage <run> --dry-run` must build a prompt at all three
+# TRIAGE_CODE_CONTEXT levels. A corpus scanned before 2026-08-28 has no sidecar, so its
+# evidence packs would all say "exchange missing" — pick a run scanned after the
+# context-assembly layer landed.
+#
+# ---------------------------------------------------------------------------
+# THE QUESTION
+#
+#   Every recorded measurement of the LLM triage arm was taken while the model
+#   was reasoning WITHOUT its evidence. A context audit (2026-08-28) found pass 1
+#   was handed the ZAP rule id, risk, confidence and a 300-char evidence string —
+#   very nearly the deterministic table's OWN inputs — and asked to out-judge the
+#   table on them. It could not, and "the LLM arm adds nothing to triage" was the
+#   conclusion. That conclusion is NOT YET EARNED: it was measured on a model
+#   that had never seen the HTTP exchange, ZAP's own proof, the rule's meaning,
+#   or the handler source.
+#
+#   This sheet supplies the last of those — the handler's actual code — and holds
+#   everything else constant, so TRIAGE_CODE_CONTEXT is the only variable.
+#
+#     none        today's shape (evidence pack present, no handler source) —
+#                 the A/B BASELINE, not a fallback
+#     source      the resolved handler + one hop of same-package callees, raw
+#     handler+trace  the same source plus the call chain followed and where the
+#                 flagged parameter literally appears in it
+#
+# HOW TO READ IT — and do NOT stop at the first line:
+#
+#   1. agreement.llm-only — does the model finally flag what the table misses now
+#      that it can read the code? Baseline is 0-1 since the table gained its
+#      90035 row (sheet 6).
+#   2. agreement.deterministic-only — if it collapses while llm-only rises, the
+#      threshold moved rather than the judgement.
+#   3. llm_rescans overall — a large rise is the gaming signal, not a win.
+#   4. THE REASONING TEXT of every llm-only finding. A flag whose reasoning cites
+#      no specific file:line of the included source is not an instance judgement,
+#      whatever the counter says. Sheet 5 is the precedent: llm-only carried a
+#      real High/High finding for six sheets and nobody saw it, because nobody
+#      opened the findings the counter was counting.
+#   5. Detection of the Phase 2 CVE markers (uv run ground-truth assess <run>) —
+#      the only measure of correctness.
+#
+# GUARDRAILS that must not regress: llm_findings_unanswered ~1, self-consistency
+# contradictions 0-2, cost per run.
+#
+#   IF llm-only STAYS FLAT with the handler source in hand, that is the strong
+#   negative result the project has so far claimed prematurely — and it would
+#   mean the ceiling is the workload, not the context. Report it as such.
+# ---------------------------------------------------------------------------
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  max_cost_usd: 2.0
+  env:
+    SHARED_AUTH_MODE: none
+    TRIAGE_PEER_CONTEXT: full           # held; the variable is TRIAGE_CODE_CONTEXT
+    TRIAGE_PROMPT_VERSION: "5"        # v5 carries the rules for the new evidence
+    TRIAGE_HTTP_CONTEXT: balanced          # held; the evidence pack is constant
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_REPEATS: "1"            # held so the triage prompt is the only variable
+
+rows:
+  # Corpus: 20260828T132216Z-gitea-95fe52 — 45-min complete scan, has zap-messages.json (scanned 2026-08-28).
+  - name: ctx-none
+    stages: [triage]
+    run: 20260828T132216Z-gitea-95fe52
+    repeat: 3
+    env:
+      TRIAGE_CODE_CONTEXT: none
+  - name: ctx-source
+    stages: [triage]
+    run: 20260828T132216Z-gitea-95fe52
+    repeat: 3
+    env:
+      TRIAGE_CODE_CONTEXT: source
+  - name: ctx-source-nav
+    stages: [triage]
+    run: 20260828T132216Z-gitea-95fe52
+    repeat: 3
+    env:
+      TRIAGE_CODE_CONTEXT: handler+trace

@@ -1,0 +1,121 @@
+# Optimisation pass 3 — the first exercise of verification pass 2.
+#
+# SUPERSEDED 2026-09-02, kept as the record of what it measured. The residue
+# pass this sheet exercises no longer exists: verification is now ONE loop with
+# two axes (see verify.py), and the variables below — VERIFY_LLM_RESIDUE,
+# OPENROUTER_RESIDUE_MODEL, RESIDUE_PROMPT_VERSION — are gone. Re-running this
+# sheet would set nothing and silently produce a fully-default run, so do not.
+# Its successor is the N-configuration sheet; its findings stand and are written
+# up in DECISIONS.md.
+#
+#   uv run dast harness config/harness/03-residue-pass-two.yml --dry-run
+#   uv run dast harness config/harness/03-residue-pass-two.yml
+#
+# ~25 min. Cheap: pass 1 dispatches tools and costs nothing, and pass 2 sees a
+# handful of findings, not a corpus. Every row verifies the SAME stored
+# correlation, so nothing here re-scans and nothing re-triages.
+
+# ---------------------------------------------------------------------------
+# WHAT SHEETS 1-2 ESTABLISHED
+#
+#   1. `llm-only` IS FLAT AT 1-2, ACROSS EVERYTHING TRIED. Twenty variants —
+#      three context levels, two models, before and after the verdict-contract
+#      fix — and not one moved it. The LLM triage arm has never once flagged
+#      more than two findings the free deterministic table missed.
+#
+#      That is the strongest result the project has on its own central claim,
+#      and it points somewhere specific: PER-FINDING TRIAGE IS NOT WHERE THE
+#      MODEL ADDS VALUE. Tuning it further is optimising a flat line.
+#
+#   2. The contract fix closed the verdict loss (51-87 -> 1 unanswered) and, in
+#      doing so, overturned the model comparison: on honest denominators the
+#      cheap and expensive models are indistinguishable on flags.
+#
+# WHY THIS SHEET GOES SOMEWHERE ELSE
+#
+#   OBJECTIVE.md names three primary metrics. Two of them have been measured to
+#   death; the third has NEVER BEEN MEASURED AT ALL. Verification pass 2 was
+#   built on 2026-08-18, and in every run since, it has been handed nothing —
+#   first because a broken probe URL left no honest residue, then because
+#   nothing enabled it.
+#
+#   The residue now exists and is stable: SIX findings, all rule 40018 (SQL
+#   Injection), all sqlmap, all `inconclusive` for the same honest reason —
+#   sqlmap qualified its own page comparison (`reflective value(s) found and
+#   filtering out`) and a refutation resting on a comparison the tool has just
+#   disowned is not a refutation. The same six appear in all four verification
+#   artifacts of this corpus, so this is a property of the target, not a flake.
+#
+#   Those six are exactly what pass 2 was designed for: cases a FIXED probe
+#   cannot settle, as opposed to cases a BROKEN probe never tested.
+#
+# THE QUESTION THIS SHEET ASKS
+#
+#   Given residue a deterministic probe genuinely cannot settle, does the model
+#   settle any of it — and does it do so honestly?
+#
+#   Read `final_outcome` against `pass1_outcome` in each verification artifact:
+#
+#     * reinterpreted to `refuted`  — the model read the tool output better than
+#       the classifier did. Real value, and the cheapest kind.
+#     * `refine` -> re-run -> `confirmed` — the model chose a better probe and
+#       THE TOOL confirmed it. The strongest possible result, and the integrity
+#       rule (`normalise_decision`) guarantees the model cannot self-confirm.
+#     * still `inconclusive` (+ `needs_auth`) — an honest non-answer. Not a
+#       failure; these are hard by construction.
+#
+#   A pass-2 `confirmed` that the tool did not produce would be a BUG, not a
+#   result. Check `refined_probe` and the executor's recorded command before
+#   believing any confirmation.
+#
+#   NEGATIVE RESULT TO EXPECT AND REPORT HONESTLY: six findings is a small
+#   sample and all six are one rule on one target. If pass 2 settles none of
+#   them, that closes the question for THIS residue, not for the mechanism.
+# ---------------------------------------------------------------------------
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  # Small: pass 1 is free and pass 2 sees six findings. A ceiling this tight is
+  # itself a check — if this sheet costs a dollar, something is wrong.
+  max_cost_usd: 0.50
+  env:
+    SHARED_AUTH_MODE: none
+    # Matched to how the corpus was verified before, so pass 1 reproduces the
+    # same six inconclusives rather than a different budget's residue.
+    VERIFY_MAX_DISPATCH_ALL_RULES: "30"
+
+rows:
+  # ---- 1. the control: pass 1 alone, exactly as recorded before -------------
+  # Not redundant. It pins that the residue is still six on today's code, so a
+  # difference in the rows below is pass 2 and not a drifted pass 1.
+  - name: pass1-only
+    stages: [verify]
+    run: 20260827T012512Z-gitea-d5fdc8
+    env:
+      VERIFY_LLM_RESIDUE: "0"
+
+  # ---- 2. pass 2 at the default residue model, three times ------------------
+  # Three because the residue arm has never run and its variance is unknown; a
+  # single run could not tell a real settlement from a lucky one. This is the
+  # method rule doing work rather than being recited.
+  - name: residue-default
+    stages: [verify]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      VERIFY_LLM_RESIDUE: "1"
+
+  # ---- 3. pass 2 at the cheap triage model ---------------------------------
+  # The one place in this project where a stronger model has a real argument:
+  # the residue is six findings, so the price difference is pennies rather than
+  # a multiple of the run. Sheet 2 found the models indistinguishable on bulk
+  # triage — this asks whether that still holds on the HARD cases, which is a
+  # different question and the one the residue arm exists for.
+  - name: residue-cheap
+    stages: [verify]
+    run: 20260827T012512Z-gitea-d5fdc8
+    repeat: 3
+    env:
+      VERIFY_LLM_RESIDUE: "1"
+      OPENROUTER_RESIDUE_MODEL: deepseek/deepseek-v4-flash-0731

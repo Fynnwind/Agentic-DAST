@@ -1,0 +1,54 @@
+# RESCAN · G7 — context ablations (codenone / peernone).
+# Frozen rescan of 2026-11-03 (NEXT_SESSION §6, thesis docs/RERUN-PLAN.md §6).
+#
+#   uv run dast harness config/harness/rerun-g7-context.yml   # the USER runs this
+#
+# WHAT THIS IS. Re-triage each target's G1 admin-blind scan with one context axis
+# removed, to measure what that context buys:
+#   * codenone — TRIAGE_CODE_CONTEXT none (no scoped source extract);
+#   * peernone — TRIAGE_PEER_CONTEXT none (no cross-endpoint peers).
+# repeat 3 each (the screening pass is sampled). Fill each REF-* with the actual
+# G1 admin-blind run id once G1 has landed.
+#
+# NO TARGET-STATE DEPENDENCY. `stages: [triage]` re-triages OFFLINE: it reads the
+# stored scan artifacts and calls the screening model; it does not touch the
+# target. So — unlike G6 — the target's live state is irrelevant here, and
+# resets do not affect it. Run it any time after its G1 scan exists.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 8.0
+  timeout_minutes: 150
+  env:
+    # freeze commit: rerun-2026-11-03f
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    SHARED_ORACLE: "off"
+    SHARED_AUTH_MODE: admin
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  # == codenone — no scoped code context, repeat 3 ==========================
+  # grafana-codenone equals Grafana's baseline: its code context is always none
+  # (no Noir route extraction), so this row adds repeats, not an ablation.
+  - {name: grafana-admin-blind-codenone,   run: 20261104T021051Z-grafana-8026ee,   stages: [triage], repeat: 3, env: {TRIAGE_CODE_CONTEXT: none}}
+  - {name: wordpress-admin-blind-codenone, run: 20261104T050403Z-wordpress-035a7a, stages: [triage], repeat: 3, env: {TRIAGE_CODE_CONTEXT: none}}
+  - {name: cacti-admin-blind-codenone,     run: 20261104T180821Z-cacti-70ad1b,     stages: [triage], repeat: 3, env: {TRIAGE_CODE_CONTEXT: none}}
+  - {name: gitea-admin-blind-codenone,     run: 20261104T152843Z-gitea-0614b6,     stages: [triage], repeat: 3, env: {TRIAGE_CODE_CONTEXT: none}}
+
+  # == peernone — no cross-endpoint peer context, repeat 3 ==================
+  - {name: grafana-admin-blind-peernone,   run: 20261104T021051Z-grafana-8026ee,   stages: [triage], repeat: 3, env: {TRIAGE_PEER_CONTEXT: none, TRIAGE_CODE_CONTEXT: none}}
+  - {name: wordpress-admin-blind-peernone, run: 20261104T050403Z-wordpress-035a7a, stages: [triage], repeat: 3, env: {TRIAGE_PEER_CONTEXT: none}}
+  - {name: cacti-admin-blind-peernone,     run: 20261104T180821Z-cacti-70ad1b,     stages: [triage], repeat: 3, env: {TRIAGE_PEER_CONTEXT: none}}
+  - {name: gitea-admin-blind-peernone,     run: 20261104T152843Z-gitea-0614b6,     stages: [triage], repeat: 3, env: {TRIAGE_PEER_CONTEXT: none}}

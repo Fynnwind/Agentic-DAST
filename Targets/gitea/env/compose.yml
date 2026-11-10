@@ -1,0 +1,47 @@
+# The Gitea target's own service. Pulled into the persistent stack by
+# `include:` in stacks/persistent.yml, which is what makes adding a
+# target one new directory plus one include line.
+#
+# `include:` (not `-f a.yml -f b.yml`) on purpose: with include, every relative
+# path below resolves against THIS file's directory, so `./data` means
+# targets/gitea/env/data. Passing two -f files instead would resolve both
+# against the FIRST file's directory, silently pointing this bind mount at
+# targets/data — an empty Gitea with no visible cause.
+
+services:
+  gitea:
+    # Pinned to 1.16.0 (first 1.16 release, native linux/arm64): every security
+    # fix from 1.16.1–1.16.9 is present unpatched, giving a dense documented
+    # ground-truth set (open redirect CVE-2022-1058, path traversal, CSRF,
+    # access-control, XSS-adjacent). Never use :latest.
+    # Pinned by digest (rescan freeze 2026-10-26); `docker images --digests gitea/gitea`.
+    image: gitea/gitea:1.16.0@sha256:67ccf27b427ec65fd7378d0999a3d94e9649f1953d2bb115864faa71ce7b9ec2
+    container_name: target-gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__database__DB_TYPE: sqlite3
+      # Skip the interactive install wizard so the target is scan-ready on boot.
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__SSH_PORT: "222"
+      # Keep registration open so a scan/seed can create accounts freely.
+      GITEA__service__DISABLE_REGISTRATION: "false"
+    volumes:
+      # This target's persistent state, beside its definition and seed scripts.
+      - ./data:/data
+    # Bound to loopback: the scan path is container-to-container over dast-net
+    # (ZAP reaches Gitea by name), so publishing to all interfaces would only
+    # expose a deliberately-vulnerable target to the LAN for no functional gain.
+    ports:
+      - "127.0.0.1:8000:3000"   # HTTP (scan surface), host-only
+      - "127.0.0.1:222:22"      # git over SSH, host-only
+    networks:
+      - dast-net
+
+networks:
+  dast-net:
+    external: true

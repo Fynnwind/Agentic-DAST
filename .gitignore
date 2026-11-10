@@ -1,0 +1,6 @@
+.DS_Store
+.idea
+.venv
+
+# Rendered by the analyzer (`dast-analyze figures`) from a local run corpus.
+Thesis-Analyzer/figures/

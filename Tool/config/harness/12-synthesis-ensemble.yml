@@ -1,0 +1,139 @@
+# Optimisation pass 12 — is cross-MODEL agreement a better predictor of a real
+# synthesis claim than cross-RUN recurrence?
+#
+#   uv run dast harness config/harness/12-synthesis-ensemble.yml --dry-run
+#   uv run dast harness config/harness/12-synthesis-ensemble.yml
+#
+# ~2-3 h, capped at $3. Two rows, one STORED corpus, repeat 2. Nothing re-scans
+# and nothing changes about pass 1 — the only variable is how many models draw
+# pass 2's samples.
+#
+# PRECONDITION: the corpus named in `run:` must be the sheet-10 Gitea baseline,
+# and `uv run dast triage <run> --dry-run` must report `repeats x models`
+# pass-2 calls for the ensemble row. Filled in 2026-09-04 from the sheet-10 run.
+#
+# ---------------------------------------------------------------------------
+# THE QUESTION
+#
+#   Sheet 04 established, over 20 stored runs of ONE model, that
+#   `TRIAGE_SYNTHESIS_REPEATS` measures reproducibility and nothing else: `seen_in`
+#   rises cleanly (6.4% of claims at 1/5 to 66.7% at 5/5) and does **not** track
+#   severity — 3 of 7 high-severity claims appeared exactly once. So recurrence
+#   says how stably a model produces a claim, which is not the same question as
+#   whether the claim is real.
+#
+#   `TRIAGE_SYNTHESIS_MODELS` shipped 2026-09-02 on the argument that cross-model
+#   agreement is the better signal, because five samples of one model share
+#   whatever that model is prone to. That argument has never been measured. Its
+#   only live outing was a 2x2 validation: 24 claims, exactly 1 reached by both
+#   models — and that one was the claim the single-model work had already found
+#   to be the corpus's real one. One data point behaving as intended is not a
+#   result.
+#
+#   So: draw both scores from one corpus and ask which of them tracks a claim
+#   surviving verification.
+#
+#     single      TRIAGE_SYNTHESIS_MODELS empty, repeats 5      recurrence only
+#     ensemble    3 vendors, repeats 3                   both scores, 9 calls
+#
+#   The rows deliberately draw a similar NUMBER of samples (5 against 9) rather
+#   than the same one: holding sample count equal would starve the ensemble's
+#   per-model recurrence to 1-2 draws and make `seen_in` meaningless inside it.
+#   The comparison is between the two SCORES within the ensemble row; the single
+#   row is there to say what recurrence alone looks like on this corpus, and to
+#   reproduce sheet 04's axis on a fresh authenticated one.
+#
+# WHY THESE THREE MODELS
+#
+#   Three vendors, because an ensemble of one vendor's models shares that
+#   vendor's failure modes and would measure nothing the repeats do not. All
+#   three are pinned (`screening.is_pinned`), which is not optional: a
+#   re-run whose weights moved is not a reproduction.
+#
+#   `z-ai/glm-5.2` is deliberately NOT a member. It truncated a sample at the
+#   24576-token completion ceiling in the 2026-09-02 validation and it cost
+#   $0.348 for a single pass-2 call against ~$0.0025 for the default. An
+#   ensemble is only as usable as its most verbose member: a run whose member
+#   does not fit the ceiling is quietly drawing fewer samples than it thinks,
+#   and `SYNTHESIS_MAX_TOKENS` is a module constant, not per-model. Read
+#   `synthesis` call failures in the metrics record before trusting any count
+#   in this sheet.
+#
+# HOW TO READ IT — the counters answer none of this on their own:
+#
+#   1. Within the ensemble row: for each claim, `models_agreeing` (1-3) and
+#      `seen_in` (1-3 per model). Cross-tabulate them against the claim's
+#      DISPOSITION after verification — confirmed / refuted / requires-triage.
+#      The question is which score separates the dispositions, and the answer
+#      is a 2-way table, not a rate.
+#   2. `models_agreeing >= 2` with `seen_in` = 1 in every model is the
+#      interesting cell: a claim no model produces stably that several models
+#      reach anyway. If those verify better than a claim one model drew 3/3
+#      times, agreement wins and the shipped sort order is right.
+#   3. The out-of-scope claims. `suggested_tool: out-of-scope` claims are the
+#      honest manual set and are never counted as confirmed — but they still
+#      carry both scores, so read whether agreement predicts *plausibility* in
+#      the class verification cannot touch. Say so as a separate column; do not
+#      mix it into the verified one.
+#   4. Cost per row, per MODEL. The vendor field is on every call record. An
+#      ensemble that costs 4x for one extra real claim is a finding about price,
+#      and this project's argument is a CI one.
+#   5. Whether the ensemble's union is larger merely because more calls were
+#      made. Compare distinct claims per CALL, not per row.
+#
+# GUARDRAILS: no synthesis call may end truncated (check `finish_reason` in the
+# call log — a truncated sample is a silently missing draw, not a failed row);
+# self-consistency contradictions 0-2; the row's spend under its share of $3.
+#
+#   DO NOT ADOPT AN ENSEMBLE AS A DEFAULT FROM THIS SHEET. It multiplies pass
+#   2's cost by the member count and this sheet has one corpus and two repeats.
+#   What it can settle is whether `models_agreeing` deserves to lead the sort,
+#   which is what it already does.
+# ---------------------------------------------------------------------------
+
+defaults:
+  target: gitea
+  base_env: config/scanner/.env
+  max_cost_usd: 3.0
+  timeout_minutes: 90
+  env:
+    # Everything pass 1 does is held: the variable is pass 2's model list.
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+
+#
+# CORPUS REPOINTED 2026-09-08. The run ids these rows named — 20260904T022335Z-gitea-957d97
+# and its WordPress twin — no longer exist: they were the FIRST sheet-10
+# baselines, destroyed by an `rm -rf` glob on 2026-09-05, and a row naming a
+# missing run fails at resolution before anything is spent. They are also
+# superseded on their own merits: the WordPress corpus predates `action` as a
+# structural parameter (§P3), which changed what a WordPress scan CONTAINS.
+# The rows now name the 2026-09-05 authenticated baselines. Both arms of every
+# comparison still read one corpus, so the sheet's question is unchanged —
+# but its numbers are not comparable with the runs stored under the old ids.
+
+rows:
+  # One model, five draws — the shipped default, and sheet 04's axis on a fresh
+  # authenticated corpus. `models_agreeing` is 1 everywhere here by construction.
+  - name: single
+    stages: [triage, verify]
+    run: 20260905T001351Z-gitea-957d97
+    repeat: 2
+    env:
+      TRIAGE_SYNTHESIS_MODELS: ""
+      TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+      TRIAGE_SYNTHESIS_REPEATS: "5"
+
+  # Three vendors, three draws each. Nine pass-2 calls, and the only row that
+  # can produce both scores for the same claim.
+  - name: ensemble
+    stages: [triage, verify]
+    run: 20260905T001351Z-gitea-957d97
+    repeat: 2
+    env:
+      TRIAGE_SYNTHESIS_MODELS: deepseek/deepseek-v3.2,minimax/minimax-m2.5,qwen/qwen-plus-2025-07-28
+      TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+      TRIAGE_SYNTHESIS_REPEATS: "3"

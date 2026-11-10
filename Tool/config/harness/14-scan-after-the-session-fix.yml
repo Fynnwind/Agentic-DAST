@@ -1,0 +1,193 @@
+# Sheet 14 — what a scan CONTAINS now the session is file-backed, and what the
+# active-scan budget actually buys.
+#
+#   uv run dast harness config/harness/14-scan-after-the-session-fix.yml --dry-run
+#   uv run dast harness config/harness/14-scan-after-the-session-fix.yml
+#
+# ~5 h, $0.00 — SCAN ONLY. No model is called by any row, so this is the one
+# sheet that can be left running without a cost ceiling meaning anything.
+#
+# PREREQUISITES:
+#   * both persistent targets up and seeded (WordPress needs all three seed
+#     scripts, or `--auth user` has no account);
+#   * source trees present for both;
+#   * `--dry-run` clean.
+#   Memory is NOT a prerequisite any more, and that is the point of the sheet.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS SHEET EXISTS
+#
+# On 2026-09-08 the cause of every ZAP memory failure in this project was found:
+# `newSession` was called with `name=""`, an unnamed session is a TEMPORARY one,
+# and a temporary session keeps its message store in the JVM heap. A Gitea scan
+# sends 1,377,908 active-scan requests; all of them were in the heap. Named, the
+# session goes to disk, and the fix run COMPLETED where its predecessor was shut
+# down at 72%. Two event classes, and only one was ever fatal: a forced GC
+# (`Running GC as memory usage at NN%`, four times before the fix on runs that
+# survived — and still happening after it) versus the kill (`EXCEEDED_HIGH ->
+# Shutting down ZAP -> Discard Session`, once, before the fix). The session was
+# the largest term in the heap, not the only one.
+#
+# The fix is settled. What is NOT settled is what it did to the corpus, and one
+# run cannot say. Same effective configuration, baseline vs the fixed run:
+#
+#     alerts        1,972  ->  3,161   (+1,102 of the +1,189 delta is rule 10031)
+#     active scan   1,560s ->  2,702s  (baseline NOT truncated; fixed run WAS)
+#     ZAP mem peak  11.6 GB -> 14.6 GB (the second includes page cache)
+#
+# Two readings fit and neither may be adopted from n=1:
+#
+#   (a) the session writes cost active-scan throughput — 5.1 GB of I/O is real,
+#       and a slower scan reaching less of the tree changes what a baseline
+#       CONTAINS, which is the property this project protects above all;
+#   (b) the baseline's active scan was cut short by heap pressure while
+#       reporting `complete` — not speculation: this project has already
+#       recorded a WordPress row that did 109 s of active scanning, raised ZERO
+#       alerts, and reported `complete`, after a Gitea scan peaked at 10.4 GB in
+#       the same daemon.
+#
+# (b) would mean every stored baseline under-counts and they all need re-taking,
+# which is a large enough decision to deserve more than one sample. This project
+# has already had to retract a single-sample result ("refutations rise 13x").
+#
+# WHAT TO READ, per row, all of it already in the artifacts:
+#   * `active_scan_truncated` (zap-alerts.json) — did the cap stop it, or did it
+#     finish? The baseline says False at 1,560 s, which is the claim under test.
+#   * rule 10031's alert count — 504 in the baseline, 1,606 in the fixed run.
+#   * `stages.active_scan.resources.dast-zap.memory_mb_peak` — and the daemon's
+#     own log, which is the only place an Insights memory event appears.
+#
+# RE-RUN 2026-09-08, AND ONE COMPARISON IS NOW CONFOUNDED
+#
+# The first attempt lost 4 of 5 rows: the second Gitea row was shut down by ZAP
+# at 97% heap, and every row after it died on the dead daemon ("not ready after
+# 60 attempts") because `wait_until_ready` ran before `restart_daemon`. Both are
+# fixed — the ordering, and the cause, which a heap measurement found:
+# `DEFAULT_DISABLED_RULES` now also carries **50000 and 100043**, the script
+# add-on's dispatcher and the one script it runs, which took live heap from
+# under 1.21 GB to 6.73 GB and were 71% of it in GraalJS objects.
+#
+# That makes the CROSS-BASELINE comparison weaker than when this sheet was
+# written: the 2026-09-05 baseline ran with those two rules enabled and these
+# rows do not, so a difference in alert count has two candidate causes. The
+# confound is small — both rules raised **0 alerts in every run ever observed
+# here** — but it is not zero and must be said rather than assumed away.
+#
+# **The primary question is unaffected**, because it is answered WITHIN this
+# sheet: do the two `gitea-45` rows agree with each other? That comparison holds
+# every setting fixed and needs no stored baseline at all.
+#
+# DECISION RULE, written before the runs so it cannot be fitted afterwards:
+#   * the two `gitea-45` repeats agree with each other and BOTH differ from the
+#     stored baseline -> reading (b), the stored baselines under-count, and
+#     re-taking them becomes a scoped piece of work rather than a suspicion;
+#   * the repeats disagree with each other -> a Gitea scan is not reproducible at
+#     this budget, which is a finding in its own right and outranks both;
+#   * the repeats agree with the stored baseline -> reading (a), the fix costs
+#     throughput, and `DomXssScanRule` (302 s, 0 alerts on Gitea, and it is
+#     plugin 40026 so never disabled for WordPress) is the first candidate to
+#     buy the time back.
+#
+# THE SECOND QUESTION: what does the active budget buy?
+#
+# Measured on the fixed run: 30 of 52 enabled active rules ran inside 45 minutes
+# and produced SEVEN alerts. Two rules produced all of them (SqlInjection 2,
+# FormatString 3; Path Traversal's 2 came from elsewhere). Roughly 1,700 s —
+# 63% of the active budget — went to rules that raised nothing here, including
+# ~775 s of DELIBERATE SLEEPING in the timing-based rules.
+#
+# READING THE ROWS AFTERWARDS — none of this is automatic, and all of it is
+# already in the artifacts:
+#
+#   # detection per layer for the two WordPress corpora (the §N1 answer)
+#   uv run ground-truth assess <run-id> --data-dir data/harness/<sheet-dir>
+#
+#   # did the cap stop the active scan, or did it finish?
+#   jq '.active_scan_truncated, .alert_count' <run>/zap-alerts.json
+#
+#   # rule 10031: 504 in the baseline, 1,606 in the single fixed run
+#   jq '[.alerts[]|select(.pluginId=="10031")]|length' <run>/zap-alerts.json
+#
+#   # the heap, and the only place an Insights memory event ever appears
+#   jq '.stages.active_scan.resources."dast-zap".memory_mb_peak' <run>/run-metrics-scan.json
+#   docker logs dast-zap 2>&1 | grep -iE "insight.memory|EXCEEDED|Discard Session"
+#
+# THE MEMORY QUESTION IS ANSWERED BY THE SHEET COMPLETING. Five consecutive
+# scans, two of them the workload that was shut down mid-run on 2026-09-08, on a
+# daemon restarted between rows. If the sheet finishes with no Insights event in
+# the log, the fix holds under repetition and not just once.
+#
+# `wordpress-90` is the §N1 experiment: WordPress's seeded tree is 3.7x wider
+# since `action` became a structural parameter and detection did not move, and
+# the open question is whether the second live XSS sink is reachable AT ALL
+# given time. It is the only row here that can answer it, and either outcome is
+# publishable — see DECISIONS.md §"§N1".
+#
+# WHAT THIS SHEET DELIBERATELY DOES NOT DO
+#
+#   * No triage/verify/report. The question is about the SCAN, the later
+#     stages are expensive and stochastic, and a corpus can always be triaged
+#     afterwards if it becomes the new baseline.
+#   * No filtering experiment. Disabling rules because they raised nothing LAST
+#     time is fitting the scanner to the answer key — the same mistake as tuning
+#     against a stored corpus. A defensible exclusion is grounded in the
+#     target's technology (Gitea is Go: no PHP, no exposed template engine), and
+#     it belongs in `target.yml` with that reason written down, not here.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 0.0
+  timeout_minutes: 130
+  env:
+    SHARED_AUTH_MODE: user
+    # Restart the daemon before every row, as sheet 10 does: a session reset
+    # measurably does not reclaim everything, and these rows are meant to be
+    # independent samples of the same thing.
+    ZAP_RESET: restart
+    SCAN_ZAP_MAX_RULE_MINUTES: "5"
+    # Pinned explicitly, though it is also the shipped default, because the
+    # sentinel changed on 2026-09-08: this is recorded as `-1` where the
+    # 2026-09-05 baseline recorded `0`. Both mean unlimited and both reach ZAP
+    # as `0`, so the runs are behaviourally identical — but the digest is not,
+    # and Gitea's moved 957d97 -> 24517a for that reason alone. A reader
+    # comparing run ids has to be told, so the sheet says it rather than
+    # inheriting it silently.
+    SCAN_ZAP_MAX_ALERTS_PER_RULE: "-1"
+    # The session is removed after each row. A sheet of five scans would
+    # otherwise leave ~25 GB of session files in a daemon that is not recreated
+    # between sheets.
+    SCAN_ZAP_KEEP_SESSION: "0"
+    # Left at the code default (10104, 50000, 100043) rather than pinned here:
+    # the two script rules are disabled because the pipeline cannot run them at
+    # all, so a sheet that re-enabled them would be measuring the failure rather
+    # than the scan. Recorded in each row's env overlay either way.
+
+rows:
+  # --- Q1: is the fixed run reproducible, and does it differ from the baseline?
+
+  - name: gitea-45
+    target: gitea
+    stages: [scan]
+    repeat: 2
+    env:
+      SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "45"
+
+  - name: wordpress-45
+    target: wordpress
+    stages: [scan]
+    repeat: 2
+    env:
+      SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "45"
+
+  # --- Q2 (§N1): is WordPress's second live XSS sink reachable given time?
+  #
+  # Everything else is held. If the `REQUEST_URI` marker is detected here, the
+  # 1/3 bound is a budget artefact and the thesis says so; if it is not,
+  # "scan-scale-limited" strengthens from an inference to a measurement.
+  # Assessed with `ground-truth assess` against the same markers, afterwards.
+
+  - name: wordpress-90
+    target: wordpress
+    stages: [scan]
+    env:
+      SCAN_ZAP_MAX_ACTIVE_SCAN_MINUTES: "90"

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zap-alerts.schema.json",
+  "title": "ZAP scan report (scan-zap-alerts.json)",
+  "description": "The scan stage's headline artifact: ZAP's alerts plus the coverage/scan accounting the join and triage read. The alert items keep ZAP's own field names; only `alerts` is required, and its item fields are typed but not required because ZAP omits some depending on the rule.",
+  "type": "object",
+  "required": ["alerts"],
+  "properties": {
+    "target": {"type": "string"},
+    "alert_count": {"type": "integer"},
+    "generated_at": {"type": "string"},
+    "zap_version": {"type": "string"},
+    "urls_before_active_scan": {"type": "integer"},
+    "urls_after_seeding": {"type": "integer"},
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pluginId": {"type": ["string", "integer"]},
+          "method": {"type": "string"},
+          "url": {"type": "string"},
+          "name": {"type": "string"},
+          "risk": {"type": "string"},
+          "confidence": {"type": "string"},
+          "param": {"type": "string"},
+          "evidence": {"type": "string"},
+          "sourceid": {"type": ["string", "integer"]}
+        }
+      }
+    }
+  }
+}

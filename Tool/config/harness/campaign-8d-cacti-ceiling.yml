@@ -1,0 +1,61 @@
+# CAMPAIGN · BLOCK 8d · cacti ceiling, ONE run per invocation (to reach n=6).
+#
+#   uv run dast harness config/harness/campaign-8d-cacti-ceiling.yml
+#
+# WHY. The cacti ceiling verify's nuclei CVE-2022-46169 OOB template genuinely
+# RCEs the target: the injected command spawns resident `script_server.php realtime`
+# processes that each hold a mariadb connection and never exit, so a run's fuzzing
+# saturates max_connections (151) and cacti deadlocks AFTER the scan — persisting
+# with zero load until the container is restarted. A run survives its OWN verify
+# (block-8c run 1 completed), but the next run's reset races a still-wedged target
+# and its login times out. So this sheet runs ONE ceiling per invocation; the driver
+# script (scratchpad) does a full `docker restart` + a login-level readiness probe to
+# recover cacti to a loginable state BEFORE each invocation. Repeat 1, run twice, to
+# take the post-corpus cacti ceiling band from n=4 to n=6 (block-6 1 + block-8 1 +
+# block-8b 1 + block-8c 1 + these 2). Same config as the block-8 cacti row; register
+# this sheet as a post sheet beside campaign-8/8b/8c. After: `dast cve` on each run.
+
+defaults:
+  base_env: config/scanner/.env
+  max_cost_usd: 4.0
+  timeout_minutes: 240
+  env:
+    TRIAGE_CODE_CONTEXT: handler+trace
+    TRIAGE_HTTP_CONTEXT: balanced
+    TRIAGE_PEER_CONTEXT: full
+    TRIAGE_RETRIEVAL: push
+    TRIAGE_SYNTHESIS_ENABLED: "on"
+    TRIAGE_SYNTHESIS_REPEATS: "5"
+    TRIAGE_PRUNE_NONINTERACTIVE_PHP: "off"
+    TRIAGE_SCREENING_MODEL: deepseek/deepseek-v4-flash-0731
+    TRIAGE_SCREENING_PROVIDER: wafer
+    TRIAGE_SYNTHESIS_MODEL: deepseek/deepseek-v3.2
+    TRIAGE_SYNTHESIS_PROVIDER: ""
+    VERIFY_MODEL: minimax/minimax-m2.5
+    VERIFY_PROVIDER: ""
+    VERIFY_TOOL_CHOICE: table
+    VERIFY_INVOCATION: llm
+    VERIFY_MAX_ROUNDS: "3"
+    VERIFY_MAX_DISPATCH_ALL_RULES: "15"
+    VERIFY_MAX_DISPATCHES_TOTAL: "40"
+    VERIFY_MAX_MINUTES: "30"
+    VERIFY_TOOL_TIMEOUT_SECONDS: "120"
+    VERIFY_MAX_SIBLINGS: "0"
+    TRIAGE_PROMPT_VERSION: "3"
+    TRIAGE_SYNTHESIS_PROMPT_VERSION: "5"
+    VERIFY_PROMPT_VERSION: "2"
+    SHARED_ORACLE: "off"
+    SHARED_RUN_MAX_COST_USD: "2.0"
+
+rows:
+  - name: cacti-admin-ceiling
+    target: cacti
+    stages: [scan, triage, verify]
+    repeat: 1
+    env:
+      SHARED_AUTH_MODE: admin
+      SHARED_ORACLE: "on"
+      SCAN_RESET_TARGET: "on"
+      VERIFY_OOB: "on"
+      VERIFY_INTERACTSH_SERVER: http://interactsh.local:8080
+      VERIFY_INTERACTSH_DNS: "172.19.0.252"
